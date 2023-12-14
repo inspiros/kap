@@ -33,7 +33,7 @@ While this means we can apply them for an arbitrary number $k$, the methods migh
 cases (e.g. $k = 3$ a.k.a. the **3-index Assignment Problem**).
 
 For more technical details, please refer to the [paper](https://www.mdpi.com/2227-7390/8/11/2050)
-or contact the authors.
+or contact the authors, not me 😂.
 
 ### Context
 
