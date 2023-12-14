@@ -1,8 +1,9 @@
 ``kap``: $k$-Assignment Problem Solver
 ======
+[![Build wheels](https://github.com/inspiros/kap/actions/workflows/build_wheels.yml/badge.svg)](https://github.com/inspiros/kap/actions) [![PyPI](https://img.shields.io/pypi/v/kap)](https://pypi.org/project/kap) [![License](https://img.shields.io/github/license/inspiros/kap)](https://github.com/inspiros/kap/blob/master/LICENSE.txt)
 
-This project implements Boštjan Gabrovšek's
-[Multiple Hungarian Method for k-Assignment Problem](https://www.mdpi.com/2227-7390/8/11/2050).
+This project implements **Boštjan Gabrovšek**'s Multiple Hungarian Methods for solving the **$k$-Assignment Problem**
+(or **$k$-Partite Graph Matching Problem**), described in [this paper](https://www.mdpi.com/2227-7390/8/11/2050).
 
 ## Background
 
@@ -13,7 +14,7 @@ This project implements Boštjan Gabrovšek's
 It is also traditionally referred to as **Multidimensional Assignment Problem**.
 
 <p align="center">
-    <img src="resources/tripartite_matching_example.png" width="300">
+    <img src="https://raw.githubusercontent.com/inspiros/kap/master/resources/tripartite_matching_example.png" width="300">
 </p>
 
 Formally, we seek a $k$-assignment of a given $k$-partite weighted graph $G = (V, E, \omega)$ with the minimum weight:
@@ -31,7 +32,8 @@ which is decomposed into small binary sub-problems and solved with the Hungarian
 While this means we can apply them for an arbitrary number $k$, the methods might not be the most efficient for certain
 cases (e.g. $k = 3$ a.k.a. the **3-index Assignment Problem**).
 
-For more technical details, please refer to the [paper](https://www.mdpi.com/2227-7390/8/11/2050).
+For more technical details, please refer to the [paper](https://www.mdpi.com/2227-7390/8/11/2050)
+or contact the authors.
 
 ### Context
 
@@ -102,7 +104,7 @@ print("Total cost:", sum(matching_result.matching_costs))
 There are a few things to note about its parameters:
 - ``cost_matrices``: Sequence of 2D cost matrices (can't be represented as a 3D ``np.ndarray`` because partites can have
   different number of vertices) ordered as non-zero indices of an upper triangular matrix (see ``np.triu_indices``).
-- ``algo``: This should be one of the proposed 6 algorithms, namely ``"Am", "Bm", "Cm", "Dm", "Em", "Fm"``.
+- ``algo``: This should be one of the six proposed algorithms, namely ``"Am", "Bm", "Cm", "Dm", "Em", "Fm"``.
   $\text{C}_m$ is set to be the default as it usually performs as good as random approaches while having a
   deterministic behavior.
 
