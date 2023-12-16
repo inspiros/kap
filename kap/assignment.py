@@ -1,6 +1,6 @@
+import itertools
 import math
 from collections import UserList, namedtuple
-from itertools import combinations
 from typing import List, Sequence, Tuple, Union, Optional
 
 import numpy as np
@@ -14,7 +14,15 @@ AssignmentResult = namedtuple("AssignmentResult",
                               defaults=[None, None, None])
 
 
-def _check_partites(p1, p2, M=None):
+def _compute_n_partites(cost_matrices: Sequence[Array2DLike]) -> Optional[int]:
+    r"""Return number of partites if number of cost_matrices is valid."""
+    if not len(cost_matrices):
+        return None
+    n_partites = (1 + math.sqrt(1 + 8 * len(cost_matrices))) / 2
+    return int(n_partites) if n_partites.is_integer() else None
+
+
+def _check_partites(p1: int, p2: int, M: Optional[Array2DLike] = None):
     if p1 == p2:
         raise ValueError("No diagonal elements in condensed matrix.")
     if p1 > p2:
@@ -118,17 +126,13 @@ class KPartiteNamedNodeList(UserList):
 class KPartiteGraph:
     r"""
     k-Partite Graph.
+    This class serves as internal struct of k-Assignment solvers and
+    does not perform sanity checks on input arguments.
     """
 
     def __init__(self, cost_matrices, n_partites=None, node_indices=None):
         self.cost_matrices = cost_matrices
-        self.n_partites = n_partites
-        if n_partites is None:
-            n_partites = (1 + math.sqrt(1 + 8 * len(cost_matrices))) / 2
-            self.n_partites = int(n_partites) if n_partites.is_integer() else None
-        if self.n_partites is None:
-            raise ValueError("Invalid number of cost matrices.")
-
+        self.n_partites = _compute_n_partites(self.cost_matrices) if n_partites is None else n_partites
         if node_indices is not None:
             self.node_indices = KPartiteNamedNodeList(node_indices)
         else:
@@ -136,7 +140,7 @@ class KPartiteGraph:
             for pi, n_node in enumerate(self.n_nodes):
                 self.node_indices.append([KPartiteNamedNode(pi, _) for _ in range(n_node)])
 
-    def quotient(self, p1, p2, M12):
+    def quotient(self, p1: int, p2: int, M12: Array2DLike) -> 'KPartiteGraph':
         p1, p2, M12 = _check_partites(p1, p2, M12)
         n_nodes = self.n_nodes
         free_1 = list(set(range(n_nodes[p1])).difference(M12[:, 0].tolist()))
@@ -201,7 +205,7 @@ class KPartiteGraph:
         for node_indices_i in self.node_indices:
             for node in node_indices_i:
                 if node.is_quotient:
-                    vertices.extend(list(combinations(node.quotient_nodes, r=2)))
+                    vertices.extend(list(itertools.combinations(node.quotient_nodes, r=2)))
         vertices.sort(key=lambda v: (v[0][0], v[1][0], v[0][1], v[1][1]))
         return vertices
 
@@ -215,24 +219,22 @@ class KPartiteGraph:
                     acc_cost += node.vertices_cost
         return acc_cost
 
-    def reconstruct(self, return_free=False) -> AssignmentResult:
-        matches, free, matching_costs = [], [], []
+    def reconstruct(self, return_free: bool = False) -> AssignmentResult:
+        matches, free, matching_costs = [], [] if return_free else None, []
         for node_indices_i in self.node_indices:
             for node in node_indices_i:
                 if node.is_quotient:
                     matches.append(node.quotient_nodes)
                     matching_costs.append(node.vertices_cost)
-                else:
+                elif return_free:
                     free.append(node.quotient_nodes)
         # matches = np.array(matches)
         # free = np.array(free)
         # matching_costs = np.array(matching_costs)
-        return AssignmentResult(matches,
-                                matching_costs,
-                                free if return_free else None)
+        return AssignmentResult(matches, matching_costs, free)
 
-    def reconstruct_from(self, node_indices) -> AssignmentResult:
-        matches, free, matching_costs = [], [], []
+    def reconstruct_from(self, node_indices, return_free: bool = False) -> AssignmentResult:
+        matches, free, matching_costs = [], [] if return_free else None, []
         for node_indices_i in node_indices:
             for node in node_indices_i:
                 if node.is_quotient:
@@ -244,7 +246,7 @@ class KPartiteGraph:
                             matches.append([node_k, node_l])
                             matching_costs.append(self[node_k[0], node_l[0]][node_k[1], node_l[1]])
                     # matches.append(node.quotient_nodes)
-                else:
+                elif return_free:
                     free.append(node.quotient_nodes)
         # matches = np.array(matches)
         # free = np.array(free)
@@ -280,7 +282,6 @@ class KPartiteGraph:
 # noinspection PyPackageRequirements
 def linear_assignment(cost_matrix: Array2DLike,
                       maximize: bool = False,
-                      matching_filter=None,
                       return_free: bool = False,
                       backend: str = "scipy") -> AssignmentResult:
     r"""
@@ -298,7 +299,6 @@ def linear_assignment(cost_matrix: Array2DLike,
         cost_matrix (ndarray): 2D matrix of costs.
         maximize (bool): Calculates a maximum weight matching if true.
             Defaults to False.
-        matching_filter:
         return_free (bool): Return unmatched vertices if true.
             Defaults to False.
         backend (str): The backend used to solve the linear assignment problem.
@@ -359,15 +359,6 @@ def linear_assignment(cost_matrix: Array2DLike,
                          f"Got {backend}.")
     matching_costs = cost_matrix[tuple(matches.T.tolist())]
 
-    # apply filter
-    if matching_filter is not None:
-        filtered_inds = []
-        for i, ((k, l), matching_cost) in enumerate(zip(matches, matching_costs)):
-            if matching_filter(k, l, matching_cost):
-                filtered_inds.append(i)
-        matches = matches[filtered_inds]
-        matching_costs = matching_costs[filtered_inds]
-
     if return_free:
         free = []
         free += [(0, _) for _ in list(set(range(cost_matrix.shape[0])).difference(matches[:, 0].tolist()))]
@@ -400,7 +391,7 @@ def solve_Bm(G: KPartiteGraph,
     best_score = np.inf if not maximize else -np.inf
     best_choices = None
 
-    for i, j in combinations(list(range(G.n_partites)), r=2):
+    for i, j in itertools.combinations(range(G.n_partites), r=2):
         choices = [(i, j)]
         Gq = G.quotient(i, j, linear_assignment(G[i, j], maximize, matching_filter,
                                                 backend=backend)[0])
@@ -427,10 +418,9 @@ def solve_Bm(G: KPartiteGraph,
 def solve_Cm(G: KPartiteGraph,
              maximize: bool = False,
              max_iter: int = 100,
-             matching_filter=None,
              backend: str = "scipy") -> KPartiteGraph:
     # init with Bm
-    Gq, choices = solve_Bm(G, maximize, matching_filter,
+    Gq, choices = solve_Bm(G, maximize,
                            return_partites_choices=True,
                            backend=backend)
     best_Gq = Gq
@@ -442,11 +432,11 @@ def solve_Cm(G: KPartiteGraph,
     for iteration in range(max_iter):
         improvement_achieved = False
         for p1, p2 in filter(lambda _: _ != best_first_partites_pair,
-                             combinations(list(range(G.n_partites)), r=2)):
+                             itertools.combinations(range(G.n_partites), r=2)):
             fixed_vertices = list(filter(lambda _: (_[0][0], _[1][0]) == (p1, p2), best_vertices))
             M = [[_[0][1], _[1][1]] for _ in fixed_vertices]
             Gq = G.quotient(p1, p2, M)
-            Gq, choices = solve_Bm(Gq, maximize, matching_filter,
+            Gq, choices = solve_Bm(Gq, maximize,
                                    return_partites_choices=True,
                                    backend=backend)
             score = Gq.vertices_cost()
@@ -464,7 +454,6 @@ def solve_Cm(G: KPartiteGraph,
 # noinspection DuplicatedCode
 def solve_Dm(G: KPartiteGraph,
              maximize: bool = False,
-             matching_filter=None,
              return_partites_choices: bool = False,
              backend: str = "scipy") -> Union[KPartiteGraph, Tuple[KPartiteGraph, List[Tuple[int, int]]]]:
     last_Gq = G.clone()
@@ -474,8 +463,8 @@ def solve_Dm(G: KPartiteGraph,
         best_score = np.inf if not maximize else -np.inf
         best_choices = None
 
-        for i, j in combinations(list(range(last_Gq.n_partites)), r=2):
-            Gq = last_Gq.quotient(i, j, linear_assignment(last_Gq[i, j], maximize, matching_filter,
+        for i, j in itertools.combinations(range(last_Gq.n_partites), r=2):
+            Gq = last_Gq.quotient(i, j, linear_assignment(last_Gq[i, j], maximize,
                                                           backend=backend)[0])
             score = Gq.vertices_cost()
             if (score < best_score and not maximize) or (score > best_score and maximize):
@@ -497,7 +486,6 @@ def _Em_loop(G: KPartiteGraph,
              first_partite_pair: Tuple[int, int],
              maximize: bool = False,
              max_iter: int = 100,
-             matching_filter=None,
              backend: str = "scipy") -> Tuple[KPartiteGraph, float]:
     best_Gq = G_init
     best_score = G_init.vertices_cost()
@@ -508,11 +496,11 @@ def _Em_loop(G: KPartiteGraph,
     for iteration in range(max_iter):
         improvement_achieved = False
         for p1, p2 in np.random.permutation(list(filter(lambda _: _ != best_first_partites_pair,
-                                                        combinations(list(range(G.n_partites)), r=2)))):
+                                                        itertools.combinations(range(G.n_partites), r=2)))):
             fixed_vertices = list(filter(lambda _: (_[0][0], _[1][0]) == (p1, p2), best_vertices))
             M = [[_[0][1], _[1][1]] for _ in fixed_vertices]
             Gq = G.quotient(p1, p2, M)
-            Gq, choices = solve_Bm(Gq, maximize, matching_filter,
+            Gq, choices = solve_Bm(Gq, maximize,
                                    return_partites_choices=True,
                                    backend=backend)
             score = Gq.vertices_cost()
@@ -533,7 +521,6 @@ def solve_Em(G: KPartiteGraph,
              maximize: bool = False,
              max_iter: int = 100,
              n_trials: int = 1,
-             matching_filter=None,
              backend: str = "scipy") -> KPartiteGraph:
     if max_iter <= 0:
         raise ValueError(f"max_iter must be a positive integer. Got {max_iter}.")
@@ -541,7 +528,7 @@ def solve_Em(G: KPartiteGraph,
         raise ValueError(f"n_trials must be a positive integer. Got {n_trials}.")
 
     # init with Bm
-    Gq, choices = solve_Bm(G, maximize, matching_filter,
+    Gq, choices = solve_Bm(G, maximize,
                            return_partites_choices=True,
                            backend=backend)
     best_Gq = Gq
@@ -549,7 +536,7 @@ def solve_Em(G: KPartiteGraph,
     best_first_partites_pair = choices[0]
 
     for ti in range(n_trials):
-        Gq, score = _Em_loop(G, Gq, best_first_partites_pair, maximize, max_iter, matching_filter,
+        Gq, score = _Em_loop(G, Gq, best_first_partites_pair, maximize, max_iter,
                              backend=backend)
         if (score < best_score and not maximize) or (score > best_score and maximize):
             best_Gq = Gq
@@ -561,13 +548,12 @@ def solve_Em(G: KPartiteGraph,
 def solve_Fm(G: KPartiteGraph,
              maximize: bool = False,
              max_iter: int = 100,
-             matching_filter=None,
              backend: str = "scipy") -> KPartiteGraph:
     if max_iter <= 0:
         raise ValueError(f"max_iter must be a positive integer. Got {max_iter}.")
 
     # init with Bm
-    Gq, choices = solve_Bm(G, maximize, matching_filter,
+    Gq, choices = solve_Bm(G, maximize,
                            return_partites_choices=True,
                            backend=backend)
     best_Gq = None
@@ -588,12 +574,12 @@ def solve_Fm(G: KPartiteGraph,
         best_edges_list.clear()
         best_first_partites_pair_list.clear()
 
-        for p1, p2 in filter(lambda _: _ != best_first_partites_pair[0],
-                             combinations(list(range(G.n_partites)), r=2)):
+        for p1, p2 in filter(lambda _: _ != best_first_partites_pair,
+                             itertools.combinations(range(G.n_partites), r=2)):
             fixed_vertices = list(filter(lambda _: (_[0][0], _[1][0]) == (p1, p2), best_edges))
             M = [[_[0][1], _[1][1]] for _ in fixed_vertices]
             Gq = G.quotient(p1, p2, M)
-            Gq, choices = solve_Bm(Gq, maximize, matching_filter,
+            Gq, choices = solve_Bm(Gq, maximize,
                                    return_partites_choices=True,
                                    backend=backend)
             score = Gq.vertices_cost()
@@ -621,7 +607,6 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
                  max_iter: int = 100,
                  n_trials: int = 1,
                  maximize: bool = False,
-                 matching_filter=None,
                  return_free: bool = False,
                  backend: str = "scipy") -> AssignmentResult:
     r"""
@@ -630,8 +615,8 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
     multiple times. See :func:`linear_assignment` for details about the available backends.
 
     Args:
-        cost_matrices (sequence of ndarray): List of pairwise cost matrices.
-            The order follows the indices of upper triangular matrix.
+        cost_matrices (sequence of ndarray): List of pairwise cost matrices,
+            ordered as in ``itertools.combination(n, 2)``.
         algo (str): One of the 6 named algorithms proposed in the paper:
             "Am", "Bm", "Cm", "Dm", "Em", "Fm". Defaults to "Cm".
         max_iter (int): Maximum number of iterations for Em and Fm.
@@ -640,7 +625,6 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
             This is ignored if other algorithm is used. Defaults to 1.
         maximize (bool): Calculates a maximum weight matching if true.
             Defaults to False.
-        matching_filter:
         return_free (bool): Return unmatched vertices if true.
             Defaults to False.
         backend (str): The backend used to solve the linear assignment problem.
@@ -655,33 +639,59 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         [1] Multiple Hungarian Method for k-Assignment Problem.
             *Mathematics*, 8(11), 2050, November 2020, :doi:`10.3390/math8112050`
     """
-    G = KPartiteGraph(cost_matrices)
+    # check inputs
+    if not len(cost_matrices):
+        raise ValueError("cost_matrices is empty.")
+    if not isinstance(cost_matrices, np.ndarray):
+        cost_matrices = [np.asarray(cost_matrix) for cost_matrix in cost_matrices]
+    if not all(cost_matrix.ndim == 2 for cost_matrix in cost_matrices):
+        raise ValueError("cost_matrices must be sequence of 2D arrays.")
+    # check number of cost_matrices
+    n_partites = _compute_n_partites(cost_matrices)
+    if not n_partites:
+        raise ValueError("Invalid number of cost matrices. Expected len(cost_matrices) = n * (n - 1) / 2,"
+                         f" where n is number of partites. Got {len(cost_matrices)}.")
+    # check dimensions of cost_matrices
+    n_vertices = np.full((n_partites,), -1, np.int64)
+    for cid, (p0, p1) in enumerate(itertools.combinations(range(n_partites), r=2)):
+        if n_vertices[p0] == -1:
+            n_vertices[p0] = cost_matrices[cid].shape[0]
+        elif n_vertices[p0] != cost_matrices[cid].shape[0]:
+            raise ValueError("Number of vertices do not match the dimension of cost matrices. "
+                             f"Expected cost_matrices[{cid}].shape[0]={n_vertices[p0]}. Got {n_vertices[p0]}.")
+        if n_vertices[p1] == -1:
+            n_vertices[p1] = cost_matrices[cid].shape[1]
+        elif n_vertices[p1] != cost_matrices[cid].shape[1]:
+            raise ValueError("Number of vertices do not match the dimension of cost matrices. "
+                             f"Expected cost_matrices[{cid}].shape[1]={n_vertices[p1]}. Got {n_vertices[p1]}.")
+
     algo = algo.lower()
     if len(algo) == 2 and algo[1] == "m":
         algo = algo[0]
 
+    G = KPartiteGraph(cost_matrices, n_partites)
     if algo == "a":
-        Gq = solve_Am(G, maximize, matching_filter,
+        Gq = solve_Am(G, maximize,
                       backend=backend)
         return Gq.reconstruct(return_free=return_free)
     elif algo == "b":
-        Gq = solve_Bm(G, maximize, matching_filter,
+        Gq = solve_Bm(G, maximize,
                       backend=backend)
         return Gq.reconstruct(return_free=return_free)
     elif algo == "c":
-        Gq = solve_Cm(G, maximize, max_iter, matching_filter,
+        Gq = solve_Cm(G, maximize, max_iter,
                       backend=backend)
         return Gq.reconstruct(return_free=return_free)
     elif algo == "d":
-        Gq = solve_Dm(G, maximize, matching_filter,
+        Gq = solve_Dm(G, maximize,
                       backend=backend)
         return Gq.reconstruct(return_free=return_free)
     elif algo == "e":
-        Gq = solve_Em(G, maximize, max_iter, n_trials, matching_filter,
+        Gq = solve_Em(G, maximize, max_iter, n_trials,
                       backend=backend)
         return Gq.reconstruct(return_free=return_free)
     elif algo == "f":
-        Gq = solve_Fm(G, maximize, max_iter, matching_filter,
+        Gq = solve_Fm(G, maximize, max_iter,
                       backend=backend)
         return Gq.reconstruct(return_free=return_free)
     else:

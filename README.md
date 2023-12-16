@@ -1,6 +1,6 @@
 ``kap``: $k$-Assignment Problem Solver
 ======
-[![Build wheels](https://github.com/inspiros/kap/actions/workflows/build_wheels.yml/badge.svg)](https://github.com/inspiros/kap/actions) [![PyPI](https://img.shields.io/pypi/v/kap)](https://pypi.org/project/kap) [![License](https://img.shields.io/github/license/inspiros/kap)](https://github.com/inspiros/kap/blob/master/LICENSE.txt)
+[![Build wheels](https://github.com/inspiros/kap/actions/workflows/build_wheels.yml/badge.svg)](https://github.com/inspiros/kap/actions) [![PyPI](https://img.shields.io/pypi/v/kap)](https://pypi.org/project/kap) [![Downloads](https://static.pepy.tech/badge/kap)](https://pepy.tech/project/kap) [![License](https://img.shields.io/github/license/inspiros/kap)](https://github.com/inspiros/kap/blob/master/LICENSE.txt)
 
 This project implements **Boštjan Gabrovšek**'s Multiple Hungarian Methods for solving the **$k$-Assignment Problem**
 (or **$k$-Partite Graph Matching Problem**), described in [this paper](https://www.mdpi.com/2227-7390/8/11/2050).
@@ -27,10 +27,10 @@ where
 \omega(\mathcal{Q}) = \sum\limits_{e \in E(G[\mathcal{Q}])}{\omega(e)}
 ```
 
-This repository provide the implementation of the 6 algorithms proposed by Gabrovšek for solving this problem, 
-which is decomposed into small binary sub-problems and solved with the Hungarian procedure.
-While this means we can apply them for an arbitrary number $k$, the methods might not be the most efficient for certain
-cases (e.g. $k = 3$ a.k.a. the **3-index Assignment Problem**).
+This repository provides the implementation of 6 algorithms proposed by Gabrovšek for solving this problem, 
+which is decomposed into small binary sub-problems and tackled with using the Hungarian procedure.
+While this means we can generalize for an arbitrary number $k$ and use different algorithms other than Hungarian,
+the methods might not be the most efficient for certain cases (e.g. $k = 3$ a.k.a. the **3-index Assignment Problem**).
 
 For more technical details, please refer to the [paper](https://www.mdpi.com/2227-7390/8/11/2050)
 or contact the authors, not me 😂.
@@ -102,8 +102,9 @@ print("Total cost:", sum(matching_result.matching_costs))
 
 ``kap.k_assignment`` is the equivalence for $k$-Assignment Problem.
 There are a few things to note about its parameters:
-- ``cost_matrices``: Sequence of 2D cost matrices (can't be represented as a 3D ``np.ndarray`` because partites can have
-  different number of vertices) ordered as non-zero indices of an upper triangular matrix (see ``np.triu_indices``).
+- ``cost_matrices``: Sequence of $n (n - 1) / 2$ 2D cost matrices of pairwise matching costs between $n$ partites
+  (might not be able to be represented as a 3D ``np.ndarray`` since partites can have different number of vertices)
+  ordered as in ``itertools.combination(n, 2)``. For example, $[C_{01}, C_{02}, C_{03}, C_{12}, C_{13}, C_{23}]$.
 - ``algo``: This should be one of the six proposed algorithms, namely ``"Am", "Bm", "Cm", "Dm", "Em", "Fm"``.
   $\text{C}_m$ is set to be the default as it usually performs as good as random approaches while having a
   deterministic behavior.
@@ -111,8 +112,7 @@ There are a few things to note about its parameters:
 It's return type shares the same structure as that of ``kap.linear_assignment`` but with some small differences:
 - ``matches``: Each element is the list of indices of matched vertices. For example, ``[(0, 0), (1, 1), (2, 0)]``
   indicates that node 0 of partite 0, node 1 of partite 1, and node 0 of partite 3 are matched together.
-  Note that it is **NOT** necessary for a match to contain at least one vertex from each partite
-  (the complete graph case).
+  Note that it is **NOT** necessary for a match to contain at least one vertex from each partite (incomplete graph).
 - ``matching_costs``: Each element is the sum of pairwise costs of all edges formed by the matched vertices.
 
 The following code reproduce the example described in the paper.
