@@ -84,14 +84,16 @@ def test_k_assignment():
     matching_result = k_assignment(cost_matrices,
                                    algo="Em",
                                    n_trials=10,
-                                   return_free=True)
+                                   return_free=True,
+                                   random_state=42)
     print("Result:", matching_result)
     print("Total cost:", sum(matching_result[1]))
 
     print("--- Fm ---")
     matching_result = k_assignment(cost_matrices,
                                    algo="Fm",
-                                   return_free=True)
+                                   return_free=True,
+                                   random_state=42)
     print("Result:", matching_result)
     print("Total cost:", sum(matching_result[1]))
 

@@ -486,7 +486,8 @@ def _Em_loop(G: KPartiteGraph,
              first_partite_pair: Tuple[int, int],
              maximize: bool = False,
              max_iter: int = 100,
-             backend: str = "scipy") -> Tuple[KPartiteGraph, float]:
+             backend: str = "scipy",
+             random_state: np.random.RandomState = np.random.RandomState()) -> Tuple[KPartiteGraph, float]:
     best_Gq = G_init
     best_score = G_init.vertices_cost()
     best_vertices = G_init.vertices()
@@ -495,8 +496,8 @@ def _Em_loop(G: KPartiteGraph,
     # undeterministic steepest descent
     for iteration in range(max_iter):
         improvement_achieved = False
-        for p1, p2 in np.random.permutation(list(filter(lambda _: _ != best_first_partites_pair,
-                                                        itertools.combinations(range(G.n_partites), r=2)))):
+        for p1, p2 in random_state.permutation(list(filter(lambda _: _ != best_first_partites_pair,
+                                                           itertools.combinations(range(G.n_partites), r=2)))):
             fixed_vertices = list(filter(lambda _: (_[0][0], _[1][0]) == (p1, p2), best_vertices))
             M = [[_[0][1], _[1][1]] for _ in fixed_vertices]
             Gq = G.quotient(p1, p2, M)
@@ -521,11 +522,14 @@ def solve_Em(G: KPartiteGraph,
              maximize: bool = False,
              max_iter: int = 100,
              n_trials: int = 1,
-             backend: str = "scipy") -> KPartiteGraph:
+             backend: str = "scipy",
+             random_state: Optional[Union[np.random.RandomState, int]] = None) -> KPartiteGraph:
     if max_iter <= 0:
         raise ValueError(f"max_iter must be a positive integer. Got {max_iter}.")
     if n_trials <= 0:
         raise ValueError(f"n_trials must be a positive integer. Got {n_trials}.")
+    if not isinstance(random_state, np.random.RandomState):
+        random_state = np.random.RandomState(random_state)
 
     # init with Bm
     Gq, choices = solve_Bm(G, maximize,
@@ -537,7 +541,7 @@ def solve_Em(G: KPartiteGraph,
 
     for ti in range(n_trials):
         Gq, score = _Em_loop(G, Gq, best_first_partites_pair, maximize, max_iter,
-                             backend=backend)
+                             backend=backend, random_state=random_state)
         if (score < best_score and not maximize) or (score > best_score and maximize):
             best_Gq = Gq
             best_score = score
@@ -548,9 +552,12 @@ def solve_Em(G: KPartiteGraph,
 def solve_Fm(G: KPartiteGraph,
              maximize: bool = False,
              max_iter: int = 100,
-             backend: str = "scipy") -> KPartiteGraph:
+             backend: str = "scipy",
+             random_state: Optional[Union[np.random.RandomState, int]] = None) -> KPartiteGraph:
     if max_iter <= 0:
         raise ValueError(f"max_iter must be a positive integer. Got {max_iter}.")
+    if not isinstance(random_state, np.random.RandomState):
+        random_state = np.random.RandomState(random_state)
 
     # init with Bm
     Gq, choices = solve_Bm(G, maximize,
@@ -566,7 +573,7 @@ def solve_Fm(G: KPartiteGraph,
     for iteration in range(max_iter):
         improvement_achieved = False
 
-        rand_ind = np.random.randint(0, len(best_Gq_list))
+        rand_ind = random_state.randint(0, len(best_Gq_list))
         best_Gq = best_Gq_list[rand_ind]
         best_edges = best_edges_list[rand_ind]
         best_first_partites_pair = best_first_partites_pair_list[rand_ind]
@@ -597,7 +604,7 @@ def solve_Fm(G: KPartiteGraph,
         if not improvement_achieved:
             break
     if len(best_Gq_list):
-        rand_ind = np.random.randint(0, len(best_Gq_list))
+        rand_ind = random_state.randint(0, len(best_Gq_list))
         best_Gq = best_Gq_list[rand_ind]
     return best_Gq
 
@@ -608,7 +615,8 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
                  n_trials: int = 1,
                  maximize: bool = False,
                  return_free: bool = False,
-                 backend: str = "scipy") -> AssignmentResult:
+                 backend: str = "scipy",
+                 random_state: Optional[Union[np.random.RandomState, int]] = None) -> AssignmentResult:
     r"""
     Solve the k-Assignment Problem using Gabrovšek's multiple Hungarian methods,
     described in ref. [1]_. This function call the Linear Assignment Problem solver
@@ -630,6 +638,10 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         backend (str): The backend used to solve the linear assignment problem.
             Supported backends are "scipy", "lap", "lapjv", "lapsolver", "munkres".
             Defaults to "scipy".
+        random_state (RandomState, int, optional): Controls the pseudo random
+            number generation for shuffling or choosing random partites pair in
+            Em and Fm algorithms. Pass an int for reproducible output across
+            multiple function calls. Defaults to None.
 
     Returns:
         matching_results: A namedtuple of ``matches``, ``matching_costs``,
@@ -688,11 +700,11 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         return Gq.reconstruct(return_free=return_free)
     elif algo == "e":
         Gq = solve_Em(G, maximize, max_iter, n_trials,
-                      backend=backend)
+                      backend=backend, random_state=random_state)
         return Gq.reconstruct(return_free=return_free)
     elif algo == "f":
         Gq = solve_Fm(G, maximize, max_iter,
-                      backend=backend)
+                      backend=backend, random_state=random_state)
         return Gq.reconstruct(return_free=return_free)
     else:
         raise ValueError("algo must be either Am | Bm | Cm | Dm | Em | Fm "
