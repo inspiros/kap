@@ -1,6 +1,6 @@
 ``kap``: $k$-Assignment Problem Solver
 ======
-[![Build wheels](https://github.com/inspiros/kap/actions/workflows/build_wheels.yml/badge.svg)](https://github.com/inspiros/kap/actions) [![PyPI](https://img.shields.io/pypi/v/kap)](https://pypi.org/project/kap) [![Downloads](https://static.pepy.tech/badge/kap)](https://pepy.tech/project/kap) [![License](https://img.shields.io/github/license/inspiros/kap)](https://github.com/inspiros/kap/blob/master/LICENSE.txt)
+[![Build wheels](https://github.com/inspiros/kap/actions/workflows/build_wheels.yml/badge.svg)](https://github.com/inspiros/kap/actions) [![PyPI](https://img.shields.io/pypi/v/kap)](https://pypi.org/project/kap) [![Downloads](https://static.pepy.tech/badge/kap)](https://pepy.tech/project/kap) [![License](https://img.shields.io/github/license/inspiros/kap)](https://github.com/inspiros/kap/blob/master/LICENSE.txt) [![DOI](https://zenodo.org/badge/731651337.svg)](https://zenodo.org/doi/10.5281/zenodo.10449790)
 
 This project implements **Boštjan Gabrovšek**'s Multiple Hungarian Methods for solving the **$k$-Assignment Problem**
 (or **$k$-Partite Graph Matching Problem**), described in [this paper](https://www.mdpi.com/2227-7390/8/11/2050).
@@ -147,6 +147,21 @@ print("Total cost:", sum(matching_result.matching_costs))
 ```
 
 These code blocks are extracted from [examples](examples).
+
+## Citation
+
+```bibtex
+@software{inspiros_2024_10449791,
+  author       = {Hoang-Nhat Tran},
+  title        = {inspiros/kap: v0.2.1},
+  month        = jan,
+  year         = 2024,
+  publisher    = {Zenodo},
+  version      = {v0.2.1},
+  doi          = {10.5281/zenodo.10449791},
+  url          = {https://doi.org/10.5281/zenodo.10449791}
+}
+```
 
 ## License
 
