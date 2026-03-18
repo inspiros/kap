@@ -1,0 +1,27 @@
+[project]
+name = "podgenai"
+version = "0.10.0"
+description = "GPT-4 based informational audiobook/podcast mp3 generator"
+authors = [
+    { name = "Ouroboros Chrysopoeia", email = "impredicative@users.noreply.github.com" }
+]
+dependencies = [
+    "numpy",
+]
+readme = "README.md"
+requires-python = ">= 3.12"
+keywords = ["podcast", "mp3", "audiobook", "gpt-4o", "aicast"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Natural Language :: English",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Programming Language :: Python :: 3.12"
+]
+
+[project.urls]
+Repository = "https://github.com/impredicative/podgenai"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
