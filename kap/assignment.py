@@ -182,7 +182,7 @@ class KPartiteGraph:
                     cost_ij[:, n_matches_12 + n_free_1:] = cost_i2[:, free_2]
                     quotient_cost_matrices.append(cost_ij)
                 else:
-                    quotient_cost_matrices.append(self[i, j].clone())
+                    quotient_cost_matrices.append(self[i, j].copy())
 
         quotient_node_indices = KPartiteNamedNodeList()
         for i in range(self.n_partites - 1):
