@@ -18,9 +18,12 @@ Python 3.9 or newer is required.
 
 ## From source
 
+Install a Rust toolchain (1.85 or newer), then run:
+
 ```bash
 git clone https://github.com/inspiros/kap
 cd kap
-pip install -e ".[test]"
-pytest
+pip install .
+# Or, in an activated virtual environment with maturin installed:
+maturin develop
 ```

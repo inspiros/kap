@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
 
 [project]
 name = "kap"
@@ -34,11 +34,18 @@ test = ["pytest", "scipy", "lap", "lapjv", "munkres"]
 Source = "https://github.com/inspiros/kap"
 Download = "https://pypi.org/project/kap"
 
-[tool.setuptools.packages.find]
-include = ["kap*"]
-
-[tool.setuptools.dynamic]
-version = { attr = "kap._version.__version__" }
+[tool.maturin]
+manifest-path = "crates/kap-python/Cargo.toml"
+python-source = "python"
+module-name = "kap._core"
+include = [
+    { path = "Cargo.toml", format = "sdist" },
+    { path = "Cargo.lock", format = "sdist" },
+    { path = "crates/**/*", format = "sdist" },
+    { path = "README.md", format = "sdist" },
+    { path = "LICENSE.txt", format = "sdist" },
+]
+exclude = ["target/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
