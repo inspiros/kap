@@ -17,7 +17,7 @@ usable from Python (``kap``) and from Rust (crate [``kap-solver``](crates/kap-so
 It is also traditionally referred to as **Multidimensional Assignment Problem**.
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/inspiros/kap/master/resources/tripartite_matching_example.svg" width="300">
+    <img src="https://raw.githubusercontent.com/inspiros/kap/master/assets/tripartite_matching_example.svg" width="300">
 </p>
 
 Formally, we seek a $k$-assignment of a given $k$-partite weighted graph $G = (V, E, \omega)$ with the minimum weight:
