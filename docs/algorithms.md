@@ -20,9 +20,9 @@ problem with Bm. A solution has k(k − 1)/2 such neighbours.
 | Am | Merge the first two partites, in input order, until one is left. k − 1 LAPs. |
 | Bm | At each level try every pair, solve the rest recursively with Bm, and keep the pair whose final cost is lowest. |
 | Dm | Greedy: at each level merge the pair whose LAP is cheapest. |
-| Cm | Steepest descent from Bm: move to the best neighbour while it improves. Deterministic. |
-| Em | First improvement from Bm: visit the neighbours in random order and move to the first that improves. `n_trials` runs it several times and keeps the best. |
-| Fm | Plateau search from Bm: at each step move to a random best neighbour, even if it only ties, without stepping straight back. `max_iter` caps the number of steps. |
+| Cm | Steepest descent from Bm: evaluate all neighbours of the current solution, move to the best one while it improves. Deterministic. `max_iter` caps the moves. |
+| Em | First improvement from Bm: visit the neighbours in random order and move to the first that improves. `n_trials` independent randomised runs; the best is kept. `max_iter` caps the moves per run. |
+| Fm | Tabu search from Bm: at each of `max_iter` steps move to a random best neighbour, even if it is worse, never back to the current or previous solution. Returns the best solution seen. |
 
 The paper's experiments (k = 3, 4; n up to 100) rank solution quality as
 Fm ≈ Em ≈ Cm > Bm > Dm ≈ Am. It recommends Em overall (about 0.1 % above the
@@ -31,11 +31,15 @@ methods.
 
 ## Cost
 
-LAP calls made by one run of Bm, counting the intermediate levels too:
+LAP calls made by one run of Bm, counting the intermediate levels too. The
+native core memoises merges that commute (merging {0,1} then {2,3} reaches the
+same quotient as {2,3} then {0,1}), so it solves fewer LAPs than the Python
+implementation:
 
 | k | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|
-| LAPs | 6 | 42 | 430 | 6 465 | 135 786 | 3 802 036 |
+| LAPs, native | 6 | 39 | 310 | 3 000 | 34 566 | 463 981 |
+| LAPs, Python (`backend` other than `"kap"`) | 6 | 42 | 430 | 6 465 | 135 786 | 3 802 036 |
 
 Cm, Em and Fm run Bm once per neighbour per step, so they cost a multiple of
 this. Beyond about k = 6, use Am or Dm.
@@ -45,9 +49,10 @@ this. Beyond about k = 6, use Am or Dm.
 - The paper assumes all partites have the same size. kap also accepts
   unequal sizes; the vertices left over then form incomplete matches.
 - The paper breaks ties at random; kap's Bm takes the first best pair.
-- Known issues in kap 0.2.x, to be fixed: Em's `n_trials` has no effect, and
-  Fm lacks the paper's rule against stepping back, so it keeps returning to
-  the same solution until `max_iter`.
+- With `backend="kap"` (native, default), Cm, Em and Fm follow the paper as
+  in the table above. Other backends run the Python implementation, which keeps
+  kap 0.2.3's behaviour: Cm updates the current solution during a pass, and Fm
+  accepts only equal-or-better moves.
 
 ## Reference
 

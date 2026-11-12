@@ -1,7 +1,7 @@
 import numpy as np
 
 from kap import linear_assignment, k_assignment
-from kap.assignment import _condensed_to_square
+from kap._reference.assignment import _condensed_to_square
 
 
 def test_linear_assignment():

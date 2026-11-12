@@ -5,6 +5,9 @@
 This project implements **Boštjan Gabrovšek**'s Multiple Hungarian Methods for solving the **$k$-Assignment Problem**
 (or **$k$-Partite Graph Matching Problem**), described in [this paper](https://www.mdpi.com/2227-7390/8/11/2050).
 
+Since 0.3, all six algorithms and the Linear Assignment solver run in a native Rust core,
+usable from Python (``kap``) and from Rust (crate [``kap-solver``](crates/kap-solver)).
+
 ## Background
 
 ### Problem Formulation
@@ -43,9 +46,9 @@ Further maintenance or performance tuning might be limited, but all contribution
 
 ## Requirements
 
-- **Python 3.9+**
+- **Python 3.10+**
 - ``numpy``
-- optional: ``scipy``, ``lap``, ``lapjv``, ``lapsolver`` or ``munkres``
+- optional: ``scipy``, ``lap``, ``lapjv`` or ``munkres``
   _(alternative backends for the Linear Assignment Problem; the native ``kap`` backend is built in)_
 
 ## Installation
@@ -56,11 +59,25 @@ Simply run the following command:
 pip install kap
 ```
 
-#### Notes
-
-kap now ships a native Rust core (crate [``kap-solver``](crates/kap-solver)); wheels need no compiler.
+Prebuilt wheels (one abi3 wheel per platform, for all Python versions from 3.10) need no compiler.
+Building from source needs a Rust toolchain, see [docs/installation.md](docs/installation.md).
 
 Full documentation is in [docs](docs/index.md).
+
+## Changes in 0.3
+
+- **Native core.** ``kap.k_assignment`` and ``kap.linear_assignment`` run in Rust for the default
+  ``backend="kap"``; in laptop tests the multiple Hungarian methods ran about 4-160x faster than
+  the Python implementation ($\text{F}_m$ 1-16x, since it now always runs ``max_iter`` steps).
+  Other backends still run the pure Python implementation.
+- **Algorithms follow the paper.** $\text{C}_m$ is pure steepest descent, $\text{E}_m$ runs independent
+  random trials, and $\text{F}_m$ is a tabu search that may take sideways or worse moves and returns the
+  best solution found. $\text{A}_m$, $\text{B}_m$ and $\text{D}_m$ give the same results as 0.2.3,
+  but $\text{C}_m$, $\text{E}_m$ and $\text{F}_m$ can return different (for $\text{F}_m$, usually lower-cost)
+  solutions. For the same ``random_state``, $\text{E}_m$ and $\text{F}_m$ also draw different random
+  sequences than in 0.2.
+- **Removed** the ``lapsolver`` backend (it no longer builds on recent Python).
+- **Python 3.10+** is required.
 
 ## Quick Start
 
@@ -68,11 +85,11 @@ Full documentation is in [docs](docs/index.md).
 
 For convenience, we provide ``kap.linear_assignment`` as a wrapper around backend functions.
 The available backends are:
-- ``kap`` (default): built-in native solver (Jonker-Volgenant + shortest augmenting path); also available directly as ``kap.linear_sum_assignment``
+- ``kap`` (default): built-in native solver (Jonker-Volgenant initialisation + shortest augmenting path,
+  same results as ``scipy``); also available directly as ``kap.linear_sum_assignment``
 - ``scipy``: [``scipy.optimize.linear_sum_assignment``'s documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.linear_sum_assignment.html)
 - ``lap``: https://github.com/gatagat/lap
 - ``lapjv``: https://github.com/src-d/lapjv
-- ``lapsolver``: https://github.com/cheind/py-lapsolver
 - ``munkres``: https://github.com/bmc/munkres
 
 Note that we currently do **NOT** support sparse matrix.
@@ -92,11 +109,11 @@ cost = np.array([
     [4, 4, 6],
     [3, 9, 2]
 ])
-matching_result = linear_assignment(cost, return_free=True, backend="lap")
+matching_result = linear_assignment(cost, return_free=True)
 print("Result:", matching_result)
 # Result: AssignmentResult(matches=array([[0, 2],
 #       [1, 1],
-#       [2, 0]], dtype=int64), matching_costs=array([4, 4, 3]), free=[])
+#       [2, 0]]), matching_costs=array([4, 4, 3]), free=[])
 print("Total cost:", sum(matching_result.matching_costs))
 # Total cost: 11
 ```
@@ -111,10 +128,12 @@ There are a few things to note about its parameters:
 - ``algo``: This should be one of the six proposed algorithms, namely ``"Am", "Bm", "Cm", "Dm", "Em", "Fm"``.
   $\text{C}_m$ is set to be the default as it usually performs as good as random approaches while having a
   deterministic behavior.
+- ``max_iter``, ``n_trials``, ``random_state``: control $\text{C}_m$, $\text{E}_m$ and $\text{F}_m$;
+  pass an int (or a seeded ``RandomState``/``Generator``) to ``random_state`` for reproducible results.
 
-It's return type shares the same structure as that of ``kap.linear_assignment`` but with some small differences:
+Its return type shares the same structure as that of ``kap.linear_assignment`` but with some small differences:
 - ``matches``: Each element is the list of indices of matched vertices. For example, ``[(0, 0), (1, 1), (2, 0)]``
-  indicates that node 0 of partite 0, node 1 of partite 1, and node 0 of partite 3 are matched together.
+  indicates that node 0 of partite 0, node 1 of partite 1, and node 0 of partite 2 are matched together.
   Note that it is **NOT** necessary for a match to contain at least one vertex from each partite (incomplete graph).
 - ``matching_costs``: Each element is the sum of pairwise costs of all edges formed by the matched vertices.
 
@@ -142,7 +161,7 @@ costs = [
         [8, 9, 5]
     ]),
 ]
-matching_result = k_assignment(costs, algo="Em", return_free=True, backend="lap")
+matching_result = k_assignment(costs, algo="Em", return_free=True, random_state=0)
 print("Result:", matching_result)
 # Result: AssignmentResult(matches=[[(0, 0), (1, 1), (2, 0)], [(0, 1), (1, 0), (2, 1)], [(0, 2), (1, 2), (2, 2)]], matching_costs=[23, 4, 11], free=[])
 print("Total cost:", sum(matching_result.matching_costs))
