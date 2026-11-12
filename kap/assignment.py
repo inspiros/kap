@@ -25,12 +25,15 @@ def _compute_n_partites(cost_matrices: Sequence[Array2DLike]) -> Optional[int]:
 def _check_partites(p1: int, p2: int, M: Optional[Array2DLike] = None):
     if p1 == p2:
         raise ValueError("No diagonal elements in condensed matrix.")
+    if M is not None:
+        # reshape keeps an empty matching 2D, shape (0, 2)
+        M = np.asarray(M, dtype=np.intp).reshape(-1, 2)
     if p1 > p2:
         p1, p2 = p2, p1
         if M is not None:
-            M = np.asarray(M)[:, ::-1]
+            M = M[:, ::-1]
     if M is not None:
-        return p1, p2, np.asarray(M)
+        return p1, p2, M
     return p1, p2
 
 
@@ -182,7 +185,7 @@ class KPartiteGraph:
                     cost_ij[:, n_matches_12 + n_free_1:] = cost_i2[:, free_2]
                     quotient_cost_matrices.append(cost_ij)
                 else:
-                    quotient_cost_matrices.append(self[i, j].copy())
+                    quotient_cost_matrices.append(self[preq_i, preq_j].copy())
 
         quotient_node_indices = KPartiteNamedNodeList()
         for i in range(self.n_partites - 1):
