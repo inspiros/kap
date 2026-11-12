@@ -67,8 +67,10 @@ Full documentation is in [docs](docs/index.md).
 ## Changes in 0.3
 
 - **Native core.** ``kap.k_assignment`` and ``kap.linear_assignment`` run in Rust for the default
-  ``backend="kap"``; in laptop tests the multiple Hungarian methods ran about 4-160x faster than
-  the Python implementation ($\text{F}_m$ 1-16x, since it now always runs ``max_iter`` steps).
+  ``backend="kap"``; the multiple Hungarian methods run up to about 110x faster than the Python
+  implementation for small inputs, and 1.2-2x for large ones, where the LAP solves dominate
+  ([benchmarks](docs/benchmarks.md)). $\text{F}_m$ is the exception: it now always runs
+  ``max_iter`` steps, so it is slower for $k \geq 4$ but finds lower-cost solutions.
   Other backends still run the pure Python implementation.
 - **Algorithms follow the paper.** $\text{C}_m$ is pure steepest descent, $\text{E}_m$ runs independent
   random trials, and $\text{F}_m$ is a tabu search that may take sideways or worse moves and returns the
