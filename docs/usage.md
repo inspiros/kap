@@ -26,7 +26,7 @@ Arguments:
 | `cost_matrix` | 2D array or nested list (rectangular allowed, except with `lapjv`) |
 | `maximize` | maximize total weight instead of minimizing cost |
 | `return_free` | also return the unmatched vertices |
-| `backend` | `"kap"` (default, native), `"scipy"`, `"lap"`, `"lapjv"`, `"lapsolver"` or `"munkres"` |
+| `backend` | `"kap"` (default, native), `"scipy"`, `"lap"`, `"lapjv"` or `"munkres"` |
 
 ## k-assignment
 

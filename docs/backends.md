@@ -6,7 +6,6 @@
 | `scipy` | modified Jonker-Volgenant | yes | |
 | `lap` | Jonker-Volgenant | yes | |
 | `lapjv` | Jonker-Volgenant | no | fastest of these for n ≥ 300 |
-| `lapsolver` | Jonker-Volgenant | yes | no longer builds on Python 3.12; slated for removal |
 | `munkres` | Hungarian | yes | pure Python, very slow |
 
 Measured cost of one call, in µs (server4, one pinned core, kap 0.3.0a1,

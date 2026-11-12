@@ -295,7 +295,6 @@ def linear_assignment(cost_matrix: Array2DLike,
     - :func:`scipy.optimize.linear_sum_assignment`: modified Jonker-Volgenant
     - :func:`lap.lapjv`: Jonker-Volgenant
     - :func:`lapjv.lapjv`: Jonker-Volgenant
-    - :func:`lapsolver.solve_dense`: Jonker-Volgenant
     - :meth:`munkres.Munkres.compute`: Hungarian (or Kuhn-Munkres)
 
     For a detailed performance comparisons between these solvers, see ref. [1]_.
@@ -307,7 +306,7 @@ def linear_assignment(cost_matrix: Array2DLike,
         return_free (bool): Return unmatched vertices if true.
             Defaults to False.
         backend (str): The backend used to solve the linear assignment problem.
-            Supported backends are "kap", "scipy", "lap", "lapjv", "lapsolver", "munkres".
+            Supported backends are "kap", "scipy", "lap", "lapjv", "munkres".
             Defaults to "kap".
 
     Returns:
@@ -350,13 +349,6 @@ def linear_assignment(cost_matrix: Array2DLike,
         # cost_matrix must be squared
         row_ind, col_ind, _ = lapjv.lapjv(cost_matrix if not maximize else -cost_matrix)
         matches = np.array([[col_ind[i], i] for i in row_ind])
-    elif backend == "lapsolver":
-        try:
-            from lapsolver import solve_dense
-        except ModuleNotFoundError:
-            raise ModuleNotFoundError(error_msg.format(backend=backend))
-        row_ind, col_ind = solve_dense(cost_matrix if not maximize else -cost_matrix)
-        matches = np.stack([row_ind, col_ind]).T
     elif backend == "munkres":
         try:
             from munkres import Munkres
@@ -364,11 +356,11 @@ def linear_assignment(cost_matrix: Array2DLike,
             raise ModuleNotFoundError(error_msg.format(backend=backend))
         m = Munkres()
         # munkres pads rows with list concatenation, which numpy rows would
-        # broadcast instead (munkres 1.1.4, the last release for Python 3.9).
+        # broadcast instead (seen with munkres 1.1.4), so pass lists.
         matches = np.array(m.compute((cost_matrix if not maximize else -cost_matrix).tolist()),
                            dtype=np.intp).reshape(-1, 2)
     else:
-        raise ValueError(f"backend must be either kap | scipy | lap | lapjv | lapsolver | munkres. "
+        raise ValueError(f"backend must be either kap | scipy | lap | lapjv | munkres. "
                          f"Got {backend}.")
     matching_costs = cost_matrix[tuple(matches.T.tolist())]
 
@@ -689,7 +681,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
             ordered as in ``itertools.combination(n, 2)``.
         algo (str): One of the 6 named algorithms proposed in the paper:
             "Am", "Bm", "Cm", "Dm", "Em", "Fm". Defaults to "Cm".
-        max_iter (int): Maximum number of iterations for Em and Fm.
+        max_iter (int): Maximum number of moves for Cm, Em (per trial) and Fm.
             This is ignored if other algorithm is used. Defaults to 100.
         n_trials (int): Number of trials for Em.
             This is ignored if other algorithm is used. Defaults to 1.
@@ -698,7 +690,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         return_free (bool): Return unmatched vertices if true.
             Defaults to False.
         backend (str): The backend used to solve the linear assignment problem.
-            Supported backends are "kap", "scipy", "lap", "lapjv", "lapsolver", "munkres".
+            Supported backends are "kap", "scipy", "lap", "lapjv", "munkres".
             Defaults to "kap".
         random_state (RandomState, int, optional): Controls the pseudo random
             number generation for shuffling or choosing random partites pair in
