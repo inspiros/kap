@@ -363,7 +363,10 @@ def linear_assignment(cost_matrix: Array2DLike,
         except ModuleNotFoundError:
             raise ModuleNotFoundError(error_msg.format(backend=backend))
         m = Munkres()
-        matches = np.array(m.compute(cost_matrix.copy() if not maximize else -cost_matrix))
+        # munkres pads rows with list concatenation, which numpy rows would
+        # broadcast instead (munkres 1.1.4, the last release for Python 3.9).
+        matches = np.array(m.compute((cost_matrix if not maximize else -cost_matrix).tolist()),
+                           dtype=np.intp).reshape(-1, 2)
     else:
         raise ValueError(f"backend must be either kap | scipy | lap | lapjv | lapsolver | munkres. "
                          f"Got {backend}.")
