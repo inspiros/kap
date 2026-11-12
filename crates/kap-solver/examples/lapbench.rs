@@ -57,13 +57,15 @@ fn main() {
                     }
                 })
                 .collect();
+            let (tf, cf) = time(&c, n, cols, JvMode::Fused);
             let (tj, cj) = time(&c, n, cols, JvMode::Lapjv);
             let (th, ch) = time(&c, n, cols, JvMode::InitThenSap);
             let (ts, cs) = time(&c, n, cols, JvMode::Off);
+            assert!((cf - cs).abs() <= 1e-6 * (1.0 + cs.abs()));
             assert!((cj - cs).abs() <= 1e-6 * (1.0 + cs.abs()));
             assert!((ch - cs).abs() <= 1e-6 * (1.0 + cs.abs()));
             println!(
-                "{name:10} {n:5}x{cols:<5} lapjv {tj:11.1}  init+sap {th:11.1}  sap {ts:11.1} us"
+                "{name:10} {n:5}x{cols:<5} fused {tf:11.1}  lapjv {tj:11.1}  init+sap {th:11.1}  sap {ts:11.1} us"
             );
         }
     }

@@ -269,8 +269,11 @@ const NONE: usize = usize::MAX;
 pub enum JvMode {
     Off,
     Lapjv,
-    #[default]
     InitThenSap,
+    /// JV initialisation, then LAPJV-style augmentation with relaxation and
+    /// minimum search fused into one pass per scanned row.
+    #[default]
+    Fused,
 }
 
 /// Checked in debug builds only: guards the unchecked indexing in hot loops.
@@ -351,6 +354,11 @@ impl<A: Acc> LapSolver<A> {
             JvMode::Lapjv if jv => {
                 self.jv_init();
                 self.jv_augment();
+                return Ok(self.solution(&m));
+            }
+            JvMode::Fused if jv => {
+                self.jv_init();
+                self.jv_augment_fused();
                 return Ok(self.solution(&m));
             }
             JvMode::InitThenSap if jv => {
@@ -729,6 +737,160 @@ impl<A: Acc> LapSolver<A> {
         }
     }
 
+    /// Augmentation phase for the rows left in `free` by `jv_init`: LAPJV's
+    /// column list and implicit row potentials, with the search for the next
+    /// minimum fused into the relaxation pass (as in Crouse's method) whenever
+    /// the row being scanned is the last one at the current distance. A row
+    /// that still has others waiting behind it is relaxed without tracking
+    /// the minimum, as in LAPJV, since a later pass would overwrite it.
+    fn jv_augment_fused(&mut self) {
+        let LapSolver {
+            cost: c,
+            nr,
+            u,
+            v,
+            shortest: d,
+            path: pred,
+            col4row: x,
+            row4col: y,
+            free,
+            collist,
+            ..
+        } = self;
+        let n = *nr;
+        let (d, pred, collist) = (&mut d[..n], &mut pred[..n], &mut collist[..n]);
+        // collist: [0, ready) scanned below the current minimum `mn`,
+        // [ready, low) scanned at it, [low, up) to scan at it, [up, n) todo.
+        for &fr in free.iter() {
+            let row = &c[fr * n..(fr + 1) * n];
+            // `lowest` is the least distance of a todo column and `idx` the
+            // position in collist of one that attains it, a free column
+            // being preferred among equals.
+            let mut lowest = A::INF;
+            let mut idx = 0;
+            {
+                let (vv, yy) = (&v[..n], &y[..n]);
+                for j in 0..n {
+                    d[j] = row[j] - vv[j];
+                    pred[j] = fr;
+                    collist[j] = j;
+                }
+                for j in 0..n {
+                    let h = d[j];
+                    if h < lowest || (h == lowest && yy[j] == NONE) {
+                        lowest = h;
+                        idx = j;
+                    }
+                }
+            }
+            let (mut low, mut up) = (0usize, 0usize);
+            let (mut ready, mut mn);
+            let endofpath = 'search: loop {
+                // The scan set is empty and the last pass was a fused one, so
+                // `lowest` and `idx` are current: next distance level.
+                debug_assert!(low == up && idx >= up && idx < n);
+                ready = low;
+                mn = lowest;
+                let j0 = collist[idx];
+                if y[j0] == NONE {
+                    break 'search j0;
+                }
+                collist[idx] = collist[up];
+                collist[up] = j0;
+                up += 1;
+                while low < up {
+                    let j1 = collist[low];
+                    low += 1;
+                    let i = y[j1];
+                    let rowi = &c[i * n..(i + 1) * n];
+                    let h = rowi[j1] - v[j1] - mn;
+                    let (vv, yy) = (&v[..n], &y[..n]);
+                    if low < up {
+                        // Other rows wait at this distance: relax only.
+                        for k in up..n {
+                            // SAFETY: collist is a permutation of 0..n, so
+                            // j < n and up <= k < n; all slices have length n.
+                            unsafe {
+                                let j = *collist.get_unchecked(k);
+                                assert_in_range(j, n);
+                                let v2 = *rowi.get_unchecked(j) - *vv.get_unchecked(j) - h;
+                                if v2 < *d.get_unchecked(j) {
+                                    *pred.get_unchecked_mut(j) = i;
+                                    *d.get_unchecked_mut(j) = v2;
+                                    if v2 <= mn {
+                                        if *yy.get_unchecked(j) == NONE {
+                                            break 'search j;
+                                        }
+                                        assert_in_range(up, n);
+                                        *collist.get_unchecked_mut(k) = *collist.get_unchecked(up);
+                                        *collist.get_unchecked_mut(up) = j;
+                                        up += 1;
+                                    }
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    // Last row at this distance: relax and find the minimum
+                    // of the todo columns in the same pass.
+                    lowest = A::INF;
+                    idx = NONE;
+                    for k in up..n {
+                        // SAFETY: as above.
+                        unsafe {
+                            let j = *collist.get_unchecked(k);
+                            assert_in_range(j, n);
+                            let v2 = *rowi.get_unchecked(j) - *vv.get_unchecked(j) - h;
+                            let mut dj = *d.get_unchecked(j);
+                            if v2 < dj {
+                                *pred.get_unchecked_mut(j) = i;
+                                *d.get_unchecked_mut(j) = v2;
+                                dj = v2;
+                            }
+                            if dj <= lowest {
+                                if dj <= mn {
+                                    // Ties with the current minimum: scan it
+                                    // at this level too.
+                                    if *yy.get_unchecked(j) == NONE {
+                                        break 'search j;
+                                    }
+                                    // The column at `up` was already visited
+                                    // and moves to k; follow it if it is the
+                                    // todo minimum.
+                                    if idx == up {
+                                        idx = k;
+                                    }
+                                    assert_in_range(up, n);
+                                    *collist.get_unchecked_mut(k) = *collist.get_unchecked(up);
+                                    *collist.get_unchecked_mut(up) = j;
+                                    up += 1;
+                                } else if dj < lowest || *yy.get_unchecked(j) == NONE {
+                                    lowest = dj;
+                                    idx = k;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+            for &j in &collist[..ready] {
+                v[j] = v[j] + (d[j] - mn);
+            }
+            let mut j = endofpath;
+            loop {
+                let i = pred[j];
+                y[j] = i;
+                std::mem::swap(&mut x[i], &mut j);
+                if i == fr {
+                    break;
+                }
+            }
+        }
+        for i in 0..n {
+            u[i] = c[i * n + x[i]] - v[x[i]];
+        }
+    }
+
     /// Dijkstra-like search for a shortest augmenting path from row `start`.
     /// Returns the sink column and the path length, or `None` if no finite path exists.
     fn augmenting_path(&mut self, start: usize) -> Option<(usize, A)> {
@@ -952,23 +1114,28 @@ mod tests {
         fn square_jv_matches_brute_force(n in 2usize..=7, seed in any::<u64>(), range in 1i64..=1000, maximize in any::<bool>()) {
             let sense = if maximize { Sense::Maximize } else { Sense::Minimize };
             let c = lcg_matrix(seed, n * n, range);
-            let mut solver = LapSolver::new();
-            let sol = solver.solve(MatrixView::from_row_major(&c, n, n).unwrap(), sense).unwrap();
-            check_solution(&sol, &c, n, n);
-            prop_assert_eq!(sol.cost, brute_force(&c, n, n, sense));
-            check_duals(&solver.duals(), &sol, &c, n, n, sense);
+            let best = brute_force(&c, n, n, sense);
+            for mode in [JvMode::Fused, JvMode::Lapjv, JvMode::InitThenSap] {
+                let mut solver = LapSolver::new().with_jv_mode(mode);
+                let sol = solver.solve(MatrixView::from_row_major(&c, n, n).unwrap(), sense).unwrap();
+                check_solution(&sol, &c, n, n);
+                prop_assert_eq!(sol.cost, best, "{:?}", mode);
+                check_duals(&solver.duals(), &sol, &c, n, n, sense);
+            }
         }
 
         #[test]
         fn square_jv_matches_sap(n in 2usize..=80, seed in any::<u64>(), range in 1i64..=100_000) {
             let c = lcg_matrix(seed, n * n, range);
             let m = MatrixView::from_row_major(&c, n, n).unwrap();
-            let mut jv = LapSolver::new();
-            let a = jv.solve(m, Sense::Minimize).unwrap();
             let b = LapSolver::new().with_jv_init(false).solve(m, Sense::Minimize).unwrap();
-            check_solution(&a, &c, n, n);
-            prop_assert_eq!(a.cost, b.cost);
-            check_duals(&jv.duals(), &a, &c, n, n, Sense::Minimize);
+            for mode in [JvMode::Fused, JvMode::Lapjv, JvMode::InitThenSap] {
+                let mut jv = LapSolver::new().with_jv_mode(mode);
+                let a = jv.solve(m, Sense::Minimize).unwrap();
+                check_solution(&a, &c, n, n);
+                prop_assert_eq!(a.cost, b.cost, "{:?}", mode);
+                check_duals(&jv.duals(), &a, &c, n, n, Sense::Minimize);
+            }
             // Floats: same optimum up to rounding.
             let f: Vec<f64> = c.iter().map(|&x| x as f64 / 7.0).collect();
             let fm = MatrixView::from_row_major(&f, n, n).unwrap();
