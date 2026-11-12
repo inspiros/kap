@@ -43,7 +43,7 @@ Further maintenance or performance tuning might be limited, but all contribution
 
 ## Requirements
 
-- **Python 3.7+**
+- **Python 3.9+**
 - ``numpy``
 - ``scipy`` or ``lap`` or ``lapjv`` or ``lapsolver`` or ``munkres``
   _(depends on the backend to be used for solving Linear Assignment Problem)_
@@ -59,6 +59,8 @@ pip install kap
 #### Notes
 
 This is currently a pure Python project, but we may add Cython/C++ extension in the future.
+
+Full documentation is in [docs](docs/index.md).
 
 ## Quick Start
 
