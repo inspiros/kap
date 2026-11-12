@@ -1,27 +1,44 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "podgenai"
-version = "0.10.0"
-description = "GPT-4 based informational audiobook/podcast mp3 generator"
-authors = [
-    { name = "Ouroboros Chrysopoeia", email = "impredicative@users.noreply.github.com" }
-]
-dependencies = [
-    "numpy",
-]
+name = "kap"
+dynamic = ["version"]
+description = "Gabrovšek's Multiple Hungarian method for solving k-Assignment Problem."
 readme = "README.md"
-requires-python = ">= 3.12"
-keywords = ["podcast", "mp3", "audiobook", "gpt-4o", "aicast"]
+license = "MIT"
+license-files = ["LICENSE.txt"]
+authors = [{ name = "Hoang-Nhat Tran (inspiros)", email = "hnhat.tran@gmail.com" }]
+requires-python = ">=3.9"
+dependencies = ["numpy"]
+keywords = ["k-assignment", "k-partite-matching", "linear-assignment", "bi-partite-matching", "hungarian"]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
-    "Natural Language :: English",
-    "Topic :: Multimedia :: Sound/Audio :: Speech",
-    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
-    "Programming Language :: Python :: 3.12"
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Mathematics",
 ]
+
+[project.optional-dependencies]
+scipy = ["scipy"]
+lap = ["lap"]
+lapjv = ["lapjv"]
+munkres = ["munkres"]
+test = ["pytest", "scipy", "lap", "lapjv", "munkres"]
 
 [project.urls]
-Repository = "https://github.com/impredicative/podgenai"
+Source = "https://github.com/inspiros/kap"
+Download = "https://pypi.org/project/kap"
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.setuptools.packages.find]
+include = ["kap*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "kap._version.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
