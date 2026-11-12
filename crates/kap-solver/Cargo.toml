@@ -1,0 +1,27 @@
+[package]
+name = "kap-solver"
+description = "k-assignment (k-partite matching) solvers and a rectangular linear assignment solver"
+readme = "README.md"
+keywords = ["assignment", "hungarian", "matching", "k-partite", "optimization"]
+categories = ["algorithms", "mathematics", "science"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "kap"
+
+[features]
+default = []
+rayon = ["dep:rayon"]
+ndarray = ["dep:ndarray"]
+
+[dependencies]
+ndarray = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

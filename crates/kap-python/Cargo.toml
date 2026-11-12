@@ -1,0 +1,19 @@
+[package]
+name = "kap-python"
+description = "Python bindings (kap._core) for kap-solver"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+kap-solver = { workspace = true, features = ["rayon"] }
+numpy = { workspace = true }
+pyo3 = { workspace = true, features = ["extension-module", "abi3-py39"] }

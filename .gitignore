@@ -351,3 +351,7 @@ develop/
 
 # local dev environment
 .venv/
+
+# Rust and local Python extension builds
+target/
+python/kap/*.so
