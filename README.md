@@ -68,7 +68,7 @@ Full documentation is in [docs](docs/index.md).
 
 For convenience, we provide ``kap.linear_assignment`` as a wrapper around backend functions.
 The available backends are:
-- ``kap`` (default): built-in native solver, same results as scipy; also available directly as ``kap.linear_sum_assignment``
+- ``kap`` (default): built-in native solver (Jonker-Volgenant + shortest augmenting path); also available directly as ``kap.linear_sum_assignment``
 - ``scipy``: [``scipy.optimize.linear_sum_assignment``'s documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.linear_sum_assignment.html)
 - ``lap``: https://github.com/gatagat/lap
 - ``lapjv``: https://github.com/src-d/lapjv

@@ -1,7 +1,10 @@
 """Cross-check kap's native LAP solver against scipy.optimize.linear_sum_assignment.
 
-Both implement the same algorithm with the same tie-breaking, so the
-assignments themselves (not only the costs) are expected to be identical.
+For rectangular input kap runs scipy's algorithm with the same tie-breaking,
+and continuous random costs have a unique optimum, so assignments are compared
+exactly there. Square integer matrices with many ties go through the
+Jonker-Volgenant initialisation and may pick another optimal assignment, so
+only validity and the optimal cost are compared.
 """
 
 import itertools
@@ -40,7 +43,14 @@ def test_random_float(shape, maximize, seed):
 def test_random_int_with_ties(shape, maximize, seed):
     # A narrow range gives many ties, which exercises tie-breaking.
     cost = np.random.default_rng(seed).integers(-3, 4, size=shape)
-    assert_same(cost, maximize)
+    if shape[0] != shape[1]:
+        assert_same(cost, maximize)
+        return
+    rows, cols = kap.linear_sum_assignment(cost, maximize=maximize)
+    srows, scols = scipy_lsa(cost, maximize=maximize)
+    np.testing.assert_array_equal(rows, np.arange(shape[0]))
+    assert sorted(cols) == list(range(shape[1]))
+    assert cost[rows, cols].sum() == cost[srows, scols].sum()
 
 
 @pytest.mark.parametrize(

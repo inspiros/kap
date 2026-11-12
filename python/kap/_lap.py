@@ -30,12 +30,19 @@ def _as_native(cost: np.ndarray) -> np.ndarray:
 def linear_sum_assignment(cost_matrix, maximize: bool = False):
     """Solve the linear sum assignment problem with kap's native solver.
 
-    Same interface and tie-breaking as :func:`scipy.optimize.linear_sum_assignment`:
-    returns ``(row_ind, col_ind)`` with ``row_ind`` increasing and
-    ``min(cost_matrix.shape)`` pairs. Entries equal to ``inf`` (``-inf`` when
+    Same interface as :func:`scipy.optimize.linear_sum_assignment`: returns
+    ``(row_ind, col_ind)`` with ``row_ind`` increasing and
+    ``min(cost_matrix.shape)`` pairs. Square matrices use the Jonker-Volgenant
+    initialisation, so among several optimal assignments a different one than
+    scipy's may be returned; rectangular ones break ties exactly like scipy. Entries equal to ``inf`` (``-inf`` when
     maximizing) are forbidden pairs. Integer matrices are solved exactly in
     64-bit arithmetic.
     """
+    try:
+        # Fast path: a 2-D ndarray of a natively supported dtype.
+        return _core.linear_sum_assignment(cost_matrix, maximize)
+    except TypeError:
+        pass
     cost = np.asarray(cost_matrix)
     if cost.ndim != 2:
         raise ValueError(f"expected a matrix (2-D array), got a {cost.ndim}-D array")

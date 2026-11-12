@@ -6,6 +6,9 @@ use numpy::{Element, PyArray1, PyReadonlyArray2};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
+/// Matrices with fewer entries are solved without releasing the GIL.
+const DETACH_MIN_ELEMS: usize = 4096;
+
 thread_local! {
     static SOLVER_F64: RefCell<LapSolver<f64>> = RefCell::new(LapSolver::new());
     static SOLVER_I64: RefCell<LapSolver<i64>> = RefCell::new(LapSolver::new());
@@ -69,7 +72,13 @@ where
 {
     let arr = cost.extract::<PyReadonlyArray2<'py, T>>().ok()?;
     let view = arr.as_array();
-    Some(py.detach(|| solve_view(view, sense)).map_err(lap_error))
+    // Releasing the GIL costs more than solving a small matrix.
+    let r = if view.len() <= DETACH_MIN_ELEMS {
+        solve_view(view, sense)
+    } else {
+        py.detach(|| solve_view(view, sense))
+    };
+    Some(r.map_err(lap_error))
 }
 
 type IndexPair<'py> = (Bound<'py, PyArray1<i64>>, Bound<'py, PyArray1<i64>>);
