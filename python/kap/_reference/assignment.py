@@ -386,7 +386,7 @@ def solve_Am(G: KPartiteGraph,
     Gq = G.clone()
     for _ in range(G.n_partites - 1):
         # construct quotient graph by merging the two first partites
-        Gq = Gq.quotient(0, 1, linear_assignment(Gq[0, 1], maximize, matching_filter,
+        Gq = Gq.quotient(0, 1, linear_assignment(Gq[0, 1], maximize,
                                                  backend=backend)[0])
     return Gq
 
@@ -403,7 +403,7 @@ def solve_Bm(G: KPartiteGraph,
 
     for i, j in itertools.combinations(range(G.n_partites), r=2):
         choices = [(i, j)]
-        Gq = G.quotient(i, j, linear_assignment(G[i, j], maximize, matching_filter,
+        Gq = G.quotient(i, j, linear_assignment(G[i, j], maximize,
                                                 backend=backend)[0])
         if Gq.n_partites > 1:
             recursive_result = solve_Bm(Gq, maximize, matching_filter,
@@ -545,12 +545,13 @@ def solve_Em(G: KPartiteGraph,
     Gq, choices = solve_Bm(G, maximize,
                            return_partites_choices=True,
                            backend=backend)
-    best_Gq = Gq
-    best_score = Gq.vertices_cost()
-    best_first_partites_pair = choices[0]
+    init_Gq, init_first_partites_pair = Gq, choices[0]
+    best_Gq = init_Gq
+    best_score = init_Gq.vertices_cost()
 
+    # independent trials, each a randomised descent from the Bm solution
     for ti in range(n_trials):
-        Gq, score = _Em_loop(G, Gq, best_first_partites_pair, maximize, max_iter,
+        Gq, score = _Em_loop(G, init_Gq, init_first_partites_pair, maximize, max_iter,
                              backend=backend, random_state=random_state)
         if (score < best_score and not maximize) or (score > best_score and maximize):
             best_Gq = Gq
@@ -578,8 +579,9 @@ def solve_Fm(G: KPartiteGraph,
     best_score = Gq.vertices_cost()
     best_edges_list = [Gq.vertices()]
     best_first_partites_pair_list = [choices[0]]
+    previous_edges = None
 
-    # steepest descent
+    # steepest descent with sideways moves; the current and previous solutions are tabu
     for iteration in range(max_iter):
         improvement_achieved = False
 
@@ -587,6 +589,8 @@ def solve_Fm(G: KPartiteGraph,
         best_Gq = best_Gq_list[rand_ind]
         best_edges = best_edges_list[rand_ind]
         best_first_partites_pair = best_first_partites_pair_list[rand_ind]
+        tabu = (best_edges, previous_edges)
+        previous_edges = best_edges
         best_Gq_list.clear()
         best_edges_list.clear()
         best_first_partites_pair_list.clear()
@@ -600,18 +604,23 @@ def solve_Fm(G: KPartiteGraph,
                                    return_partites_choices=True,
                                    backend=backend)
             score = Gq.vertices_cost()
+            edges = Gq.vertices()
             if score == best_score:
+                if edges in tabu or edges in best_edges_list:
+                    continue
                 best_Gq_list.append(Gq)
-                best_edges_list.append(Gq.vertices())
+                best_edges_list.append(edges)
                 best_first_partites_pair_list.append(choices[0])
                 improvement_achieved = True
             elif (score < best_score and not maximize) or (score > best_score and maximize):
                 best_Gq_list = [Gq]
                 best_score = score
-                best_edges_list = [Gq.vertices()]
+                best_edges_list = [edges]
                 best_first_partites_pair_list = [choices[0]]
                 improvement_achieved = True
         if not improvement_achieved:
+            # keep the current solution
+            best_Gq_list = [best_Gq]
             break
     if len(best_Gq_list):
         rand_ind = random_state.randint(0, len(best_Gq_list))
