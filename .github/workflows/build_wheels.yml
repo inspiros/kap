@@ -38,9 +38,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      # abi3-py39 wheels: any newer interpreter builds them
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.12'
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
@@ -53,7 +54,8 @@ jobs:
 
   test:
     needs: wheels
-    runs-on: ubuntu-latest
+    # ubuntu-latest (26.04) has no Python 3.9
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python: ['3.9', '3.13']
