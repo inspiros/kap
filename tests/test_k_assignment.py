@@ -175,3 +175,66 @@ def test_unknown_solver_option_raises_value_error(paper_costs, option):
 @pytest.mark.parametrize("algo", ALGORITHMS)
 def test_free_is_none_by_default(paper_costs, algo):
     assert kap.k_assignment(paper_costs, algo=algo, random_state=42, max_iter=5).free is None
+
+
+# Regression tests for 0.2.3 fixes.
+
+from conftest import random_instance  # noqa: E402
+import kap.assignment as _assignment  # noqa: E402
+
+
+def test_lap_calls_never_request_free(monkeypatch, paper_costs):
+    """matching_filter must not land in linear_assignment's return_free slot."""
+    original = _assignment.linear_assignment
+
+    def checked(cost_matrix, maximize=False, return_free=False, backend="scipy"):
+        assert return_free is False
+        return original(cost_matrix, maximize, return_free, backend)
+
+    monkeypatch.setattr(_assignment, "linear_assignment", checked)
+    G = _assignment.KPartiteGraph([np.asarray(c) for c in paper_costs], 3)
+    _assignment.solve_Am(G, matching_filter=object(), backend="scipy")
+    _assignment.solve_Bm(G, matching_filter=object(), backend="scipy")
+
+
+def test_em_trials_are_independent(monkeypatch):
+    """Every Em trial starts from the Bm solution, not from the previous trial."""
+    costs = random_instance(4, seed=0, n=6)  # Em improves on Bm here
+    G = _assignment.KPartiteGraph(costs, 4)
+    bm = _assignment.solve_Bm(G, backend="scipy").vertices()
+    starts = []
+    original = _assignment._Em_loop
+
+    def recording(G_, G_init, *args, **kwargs):
+        starts.append(G_init.vertices())
+        return original(G_, G_init, *args, **kwargs)
+
+    monkeypatch.setattr(_assignment, "_Em_loop", recording)
+    _assignment.solve_Em(G, n_trials=4, backend="scipy", random_state=0)
+    assert starts == [bm] * 4
+
+
+def test_em_more_trials_never_worse():
+    costs = random_instance(4, seed=5, n=6)
+    one = kap.k_assignment(costs, algo="Em", n_trials=1, random_state=1)
+    many = kap.k_assignment(costs, algo="Em", n_trials=10, random_state=1)
+    assert sum(many.matching_costs) <= sum(one.matching_costs)
+
+
+def test_fm_stops_on_a_plateau(monkeypatch):
+    """Fm must stop when no different solution is at least as good, not run to max_iter."""
+    costs = random_instance(4, seed=0, n=5, dtype=np.int64)
+    G = _assignment.KPartiteGraph(costs, 4)
+    calls = []
+    original = _assignment.solve_Bm
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(_assignment, "solve_Bm", counting)
+    max_iter = 1000
+    result = _assignment.solve_Fm(G, max_iter=max_iter, backend="scipy", random_state=0)
+    n_pairs = 6
+    assert len(calls) < 50 * n_pairs  # was ~max_iter * (n_pairs - 1) before the fix
+    assert result.vertices_cost() <= original(G, backend="scipy").vertices_cost()
