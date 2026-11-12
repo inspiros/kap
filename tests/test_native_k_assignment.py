@@ -79,9 +79,27 @@ def test_empty_partites(algo, sizes, maximize):
 
 
 @pytest.mark.parametrize("algo", ["Cm", "Em", "Fm"])
-def test_unimplemented(algo):
-    with pytest.raises(ValueError, match="not implemented"):
-        _core.k_assignment([np.zeros((2, 2))], algo)
+@pytest.mark.parametrize("k", range(2, 6))
+@pytest.mark.parametrize("equal", [True, False])
+@pytest.mark.parametrize("maximize", [False, True])
+@pytest.mark.parametrize("dtype", [np.int64, np.float64])
+def test_local_search(algo, k, equal, maximize, dtype):
+    matrices = random_instance(k, seed=3, dtype=dtype, equal=equal, n=4)
+    sizes = [matrices[0].shape[0]] + [m.shape[1] for m in matrices[: k - 1]]
+    matches, costs, free = _core.k_assignment(matrices, algo, maximize, seed=7)
+    assert_valid_assignment(
+        matrices, sizes, SimpleNamespace(matches=matches, matching_costs=costs, free=free)
+    )
+    bm_cost = sum(_core.k_assignment(matrices, "Bm", maximize)[1])
+    assert (sum(costs) >= bm_cost - 1e-9) if maximize else (sum(costs) <= bm_cost + 1e-9)
+    assert _core.k_assignment(matrices, algo, maximize, seed=7) == (matches, costs, free)
+
+
+def test_bad_options():
+    with pytest.raises(ValueError, match="max_iter"):
+        _core.k_assignment([np.zeros((2, 2))], "Fm", max_iter=0)
+    with pytest.raises(ValueError, match="n_trials"):
+        _core.k_assignment([np.zeros((2, 2))], "Em", n_trials=0)
 
 
 def test_input_errors():

@@ -11,13 +11,14 @@ pub enum Algo {
     Am,
     /// Exhaustively choose the best merge tree, memoizing commuting merges.
     Bm,
-    /// Reserved for steepest descent.
+    /// Steepest descent from Bm over the fix-one-pair neighbourhood.
     Cm,
     /// Choose the best immediate quotient at each level.
     Dm,
-    /// Reserved for randomized descent.
+    /// Best of `n_trials` independent randomised first-improvement descents from Bm.
     Em,
-    /// Reserved for tabu descent.
+    /// `max_iter` moves to a random best neighbour (sideways and worse moves
+    /// allowed), the current and previous solutions tabu; returns the best seen.
     Fm,
 }
 
@@ -26,11 +27,11 @@ pub enum Algo {
 pub struct Options {
     /// Optimization direction.
     pub sense: Sense,
-    /// Descent iteration limit.
+    /// Move limit of Cm, Em (per trial) and Fm.
     pub max_iter: usize,
-    /// Number of independent trials.
+    /// Number of independent Em trials.
     pub n_trials: usize,
-    /// Random seed.
+    /// Seed of Em and Fm; equal seeds give equal results.
     pub seed: u64,
 }
 
@@ -62,6 +63,12 @@ where
     T::Acc: Cost<Acc = T::Acc>,
 {
     let problem = KPartite::new(mats)?;
+    if matches!(algo, Algo::Em | Algo::Fm) && opts.max_iter == 0 {
+        return Err(KapError::BadOption("max_iter"));
+    }
+    if algo == Algo::Em && opts.n_trials == 0 {
+        return Err(KapError::BadOption("n_trials"));
+    }
     let mut q = Quotient::root(&problem);
     let mut solver = LapSolver::new();
     match algo {
@@ -72,7 +79,9 @@ where
         }
         Algo::Bm => q = bm(&q, opts.sense, &mut solver)?.0,
         Algo::Dm => q = dm(&q, opts.sense, &mut solver)?,
-        _ => return Err(KapError::Unimplemented(algo)),
+        Algo::Cm => q = cm(&q, opts, &mut solver)?,
+        Algo::Em => q = em(&q, opts, &mut solver)?,
+        Algo::Fm => q = fm(&q, opts, &mut solver)?,
     }
     Ok(q.reconstruct())
 }
@@ -189,4 +198,213 @@ pub(crate) fn bm<A: Acc + Cost<Acc = A>>(
         forest = merge_forest(&forest, a, b);
     }
     Ok((q, first))
+}
+
+// ---------------------------------------------------------------------------
+// Local search (Cm, Em, Fm), after Gabrovšek et al. (2020), section 3.
+//
+// A solution is a final quotient of the root problem. Its neighbour for an
+// original pair (p, q) keeps the matching it induces between V_p and V_q,
+// contracts it and re-solves the remaining (k-1)-partite problem with Bm.
+// Re-fixing the pair that produced the current solution gives that solution
+// back, so the pair of the last move (for the start, Bm's first merge) is
+// skipped.
+
+type Pair = (usize, usize);
+
+fn pairs_except(k: usize, skip: Pair) -> Vec<Pair> {
+    (0..k)
+        .flat_map(|a| (a + 1..k).map(move |b| (a, b)))
+        .filter(|&p| p != skip)
+        .collect()
+}
+
+fn neighbour<A: Acc + Cost<Acc = A>>(
+    root: &Quotient<A>,
+    current: &Quotient<A>,
+    (a, b): Pair,
+    sense: Sense,
+    solver: &mut LapSolver<A>,
+) -> Result<Quotient<A>, KapError> {
+    let fixed = root.fix(a, b, &current.edges_between(a, b))?;
+    Ok(bm(&fixed, sense, solver)?.0)
+}
+
+/// All neighbours for `pairs`, in order; in parallel with the `rayon` feature.
+fn neighbours<A: Acc + Cost<Acc = A>>(
+    root: &Quotient<A>,
+    current: &Quotient<A>,
+    pairs: &[Pair],
+    sense: Sense,
+    solver: &mut LapSolver<A>,
+) -> Result<Vec<Quotient<A>>, KapError> {
+    #[cfg(feature = "rayon")]
+    {
+        use rayon::prelude::*;
+        let _ = solver;
+        pairs
+            .par_iter()
+            .map_init(LapSolver::new, |s, &p| {
+                neighbour(root, current, p, sense, s)
+            })
+            .collect()
+    }
+    #[cfg(not(feature = "rayon"))]
+    {
+        pairs
+            .iter()
+            .map(|&p| neighbour(root, current, p, sense, solver))
+            .collect()
+    }
+}
+
+/// Index of the first best score.
+fn argbest<A: Acc>(qs: &[Quotient<A>], sense: Sense) -> Option<usize> {
+    let mut best: Option<usize> = None;
+    for (i, q) in qs.iter().enumerate() {
+        if best.is_none_or(|b| better(q.score, qs[b].score, sense)) {
+            best = Some(i);
+        }
+    }
+    best
+}
+
+pub(crate) fn cm<A: Acc + Cost<Acc = A>>(
+    root: &Quotient<A>,
+    opts: &Options,
+    solver: &mut LapSolver<A>,
+) -> Result<Quotient<A>, KapError> {
+    let (mut current, mut skip) = bm(root, opts.sense, solver)?;
+    // Pure steepest descent: a whole neighbourhood of the same solution is
+    // evaluated before moving to its best member.
+    for _ in 0..opts.max_iter {
+        let pairs = pairs_except(root.n_parts(), skip);
+        let mut nbs = neighbours(root, &current, &pairs, opts.sense, solver)?;
+        match argbest(&nbs, opts.sense) {
+            Some(i) if better(nbs[i].score, current.score, opts.sense) => {
+                current = nbs.swap_remove(i);
+                skip = pairs[i];
+            }
+            _ => break,
+        }
+    }
+    Ok(current)
+}
+
+pub(crate) fn em<A: Acc + Cost<Acc = A>>(
+    root: &Quotient<A>,
+    opts: &Options,
+    solver: &mut LapSolver<A>,
+) -> Result<Quotient<A>, KapError> {
+    let (start, first) = bm(root, opts.sense, solver)?;
+    let trial = |t: usize, solver: &mut LapSolver<A>| -> Result<Quotient<A>, KapError> {
+        let mut rng = Rng::new(opts.seed, t as u64);
+        let (mut current, mut skip) = (start.clone(), first);
+        for _ in 0..opts.max_iter {
+            let mut pairs = pairs_except(root.n_parts(), skip);
+            rng.shuffle(&mut pairs);
+            let mut moved = false;
+            for p in pairs {
+                let nb = neighbour(root, &current, p, opts.sense, solver)?;
+                if better(nb.score, current.score, opts.sense) {
+                    current = nb;
+                    skip = p;
+                    moved = true;
+                    break;
+                }
+            }
+            if !moved {
+                break;
+            }
+        }
+        Ok(current)
+    };
+    #[cfg(feature = "rayon")]
+    let results: Vec<Quotient<A>> = {
+        use rayon::prelude::*;
+        (0..opts.n_trials)
+            .into_par_iter()
+            .map_init(LapSolver::new, |s, t| trial(t, s))
+            .collect::<Result<_, _>>()?
+    };
+    #[cfg(not(feature = "rayon"))]
+    let results: Vec<Quotient<A>> = (0..opts.n_trials)
+        .map(|t| trial(t, solver))
+        .collect::<Result<_, _>>()?;
+    let mut results = results;
+    let i = argbest(&results, opts.sense).expect("n_trials >= 1");
+    Ok(results.swap_remove(i))
+}
+
+pub(crate) fn fm<A: Acc + Cost<Acc = A>>(
+    root: &Quotient<A>,
+    opts: &Options,
+    solver: &mut LapSolver<A>,
+) -> Result<Quotient<A>, KapError> {
+    let mut rng = Rng::new(opts.seed, 0);
+    let (mut current, mut skip) = bm(root, opts.sense, solver)?;
+    let mut labels = current.labels();
+    let mut previous: Option<Vec<u32>> = None;
+    let mut best = current.clone();
+    for _ in 0..opts.max_iter {
+        let pairs = pairs_except(root.n_parts(), skip);
+        let nbs = neighbours(root, &current, &pairs, opts.sense, solver)?;
+        // Tabu: staying put and stepping straight back.
+        let mut allowed: Vec<(usize, Vec<u32>)> = Vec::new();
+        for (i, nb) in nbs.iter().enumerate() {
+            let l = nb.labels();
+            if l != labels && previous.as_ref() != Some(&l) && !allowed.iter().any(|(_, x)| *x == l)
+            {
+                allowed.push((i, l));
+            }
+        }
+        let Some(target) = allowed
+            .iter()
+            .map(|&(i, _)| nbs[i].score)
+            .reduce(|x, y| if better(y, x, opts.sense) { y } else { x })
+        else {
+            break;
+        };
+        // Sideways and worse moves are allowed: pick uniformly among the best
+        // distinct allowed neighbours.
+        allowed.retain(|&(i, _)| !better(target, nbs[i].score, opts.sense));
+        let (i, l) = allowed.swap_remove(rng.below(allowed.len()));
+        previous = Some(std::mem::replace(&mut labels, l));
+        current = nbs[i].clone();
+        skip = pairs[i];
+        if better(current.score, best.score, opts.sense) {
+            best = current.clone();
+        }
+    }
+    Ok(best)
+}
+
+/// SplitMix64; one independent stream per (seed, stream).
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64, stream: u64) -> Self {
+        let mut r = Rng(seed ^ stream.wrapping_mul(0xD1B5_4A32_D192_ED03));
+        r.next();
+        r
+    }
+
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    /// Uniform in `0..n` (n >= 1), by multiply-shift.
+    fn below(&mut self, n: usize) -> usize {
+        ((self.next() as u128 * n as u128) >> 64) as usize
+    }
+
+    fn shuffle<T>(&mut self, v: &mut [T]) {
+        for i in (1..v.len()).rev() {
+            v.swap(i, self.below(i + 1));
+        }
+    }
 }

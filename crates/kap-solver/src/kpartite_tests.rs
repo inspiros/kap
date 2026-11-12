@@ -268,10 +268,16 @@ fn input_errors_and_limits() {
         KPartite::new(&[huge]),
         Err(KapError::TooManyVertices(_))
     ));
-    for algo in [Algo::Cm, Algo::Em, Algo::Fm] {
-        assert!(
-            matches!(k_assignment(&[m],algo,&Options::default()),Err(KapError::Unimplemented(a)) if a == algo)
-        );
+    for (algo, max_iter, n_trials) in [(Algo::Em, 0, 1), (Algo::Em, 1, 0), (Algo::Fm, 0, 1)] {
+        let opts = Options {
+            max_iter,
+            n_trials,
+            ..Options::default()
+        };
+        assert!(matches!(
+            k_assignment(&[m], algo, &opts),
+            Err(KapError::BadOption(_))
+        ));
     }
     let nan = MatrixView::from_row_major(&[f64::NAN], 1, 1).unwrap();
     assert!(matches!(
@@ -281,4 +287,56 @@ fn input_errors_and_limits() {
     fn send_sync<T: Send + Sync>() {}
     send_sync::<Quotient<i64>>();
     send_sync::<Quotient<f64>>();
+}
+
+fn all_pairs(k: usize) -> Vec<(usize, usize)> {
+    (0..k)
+        .flat_map(|a| (a + 1..k).map(move |b| (a, b)))
+        .collect()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(60))]
+    #[test]
+    fn local_search_properties((sizes,data,sense) in instance(), seed in any::<u64>()) {
+        let mats = views(&sizes,&data);
+        let root = Quotient::root(&KPartite::new(&mats).unwrap());
+        let mut solver = LapSolver::new();
+        let start = bm(&root,sense,&mut solver).unwrap().0.reconstruct().cost;
+        let opts = |max_iter, n_trials| Options { sense, max_iter, n_trials, seed };
+        for algo in [Algo::Cm,Algo::Em,Algo::Fm] {
+            let sol = k_assignment(&mats,algo,&opts(100,3)).unwrap();
+            check_valid(&sol,&sizes,&mats);
+            prop_assert!(!better(start,sol.cost,sense), "{:?} worse than Bm", algo);
+            // Same seed, same result.
+            prop_assert_eq!(&sol,&k_assignment(&mats,algo,&opts(100,3)).unwrap());
+        }
+        // Cm (and each Em trial) ends in a local optimum: no neighbour, over
+        // every pair, is strictly better.
+        let cm = crate::algo::cm(&root,&opts(1000,1),&mut solver).unwrap();
+        for (a,b) in all_pairs(sizes.len()) {
+            let fixed = root.fix(a,b,&cm.edges_between(a,b)).unwrap();
+            let nb = bm(&fixed,sense,&mut solver).unwrap().0;
+            prop_assert!(!better(nb.score,cm.score,sense));
+        }
+        // Trial 0 of Em uses the same stream whatever n_trials is.
+        let one = k_assignment(&mats,Algo::Em,&opts(100,1)).unwrap().cost;
+        let five = k_assignment(&mats,Algo::Em,&opts(100,5)).unwrap().cost;
+        prop_assert!(!better(one,five,sense));
+    }
+}
+
+#[test]
+fn labels_identify_partitions() {
+    let data: Vec<Vec<i64>> = (0..3)
+        .map(|i| (0..9).map(|j| (i * 7 + j * 5) % 11).collect())
+        .collect();
+    let mats = views(&[3, 3, 3], &data);
+    let root = Quotient::root(&KPartite::new(&mats).unwrap());
+    let a = root.fix(0, 1, &[(0, 1), (1, 0)]).unwrap();
+    let b = root.fix(0, 1, &[(1, 0), (0, 1)]).unwrap();
+    let c = root.fix(0, 1, &[(0, 0), (1, 1)]).unwrap();
+    assert_eq!(a.labels(), b.labels());
+    assert_ne!(a.labels(), c.labels());
+    assert_eq!(root.labels(), (0..9).collect::<Vec<u32>>());
 }

@@ -29,8 +29,8 @@ pub enum KapError {
     TooManyVertices(usize),
     /// Constituent LAP error.
     Lap(LapError),
-    /// Algorithm reserved for a later implementation.
-    Unimplemented(crate::algo::Algo),
+    /// An option is out of range (`max_iter` or `n_trials` of Em/Fm is zero).
+    BadOption(&'static str),
 }
 
 impl fmt::Display for KapError {
@@ -52,7 +52,7 @@ impl fmt::Display for KapError {
             Self::BadMatching => write!(f, "invalid part positions or matching"),
             Self::TooManyVertices(n) => write!(f, "partite size {n} exceeds u32 vertex capacity"),
             Self::Lap(e) => e.fmt(f),
-            Self::Unimplemented(a) => write!(f, "algorithm {a:?} is not implemented"),
+            Self::BadOption(name) => write!(f, "{name} must be a positive integer"),
         }
     }
 }
@@ -416,6 +416,41 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
         }
         edges.sort_unstable();
         edges
+    }
+
+    /// Canonical fingerprint of the vertex partition: for every original vertex,
+    /// in (partite, vertex) order, the global index of the first member of its
+    /// node. Two states have equal labels iff they group the vertices alike.
+    pub fn labels(&self) -> Vec<u32> {
+        let k = self.k_orig;
+        let mut sizes = vec![0usize; k];
+        for part in &self.parts {
+            for node in part.nodes.chunks_exact(k) {
+                for (p, &v) in node.iter().enumerate() {
+                    if v != NONE {
+                        sizes[p] += 1;
+                    }
+                }
+            }
+        }
+        let mut offsets = vec![0usize; k];
+        for p in 1..k {
+            offsets[p] = offsets[p - 1] + sizes[p - 1];
+        }
+        let mut labels = vec![0u32; offsets[k - 1] + sizes[k - 1]];
+        for part in &self.parts {
+            for node in part.nodes.chunks_exact(k) {
+                let mut first = None;
+                for (p, &v) in node.iter().enumerate() {
+                    if v != NONE {
+                        let g = offsets[p] + v as usize;
+                        let label = *first.get_or_insert(g as u32);
+                        labels[g] = label;
+                    }
+                }
+            }
+        }
+        labels
     }
 
     /// Reconstruct cliques and singleton vertices (also valid for intermediate states).

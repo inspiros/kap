@@ -125,7 +125,7 @@ fn try_k_dtype<'py, T>(
     py: Python<'py>,
     costs: &[Bound<'py, PyAny>],
     algo: Algo,
-    sense: Sense,
+    opts: &Options,
 ) -> Option<PyResult<KResult<T::Acc>>>
 where
     T: Cost + Element,
@@ -162,36 +162,30 @@ where
         })
         .collect::<Result<Vec<_>, _>>();
     Some(views.map_err(lap_error).and_then(|views| {
-        py.detach(|| {
-            kap::k_assignment(
-                &views,
-                algo,
-                &Options {
-                    sense,
-                    ..Options::default()
-                },
+        py.detach(|| kap::k_assignment(&views, algo, opts))
+            .map(
+                |KSolution {
+                     cliques,
+                     costs,
+                     free,
+                     ..
+                 }| (cliques, costs, free),
             )
-        })
-        .map(
-            |KSolution {
-                 cliques,
-                 costs,
-                 free,
-                 ..
-             }| (cliques, costs, free),
-        )
-        .map_err(|e| PyValueError::new_err(e.to_string()))
+            .map_err(|e| PyValueError::new_err(e.to_string()))
     }))
 }
 
-/// Solve a k-partite problem using Am, Bm, or Dm; return Python lists.
+/// Solve a k-partite problem natively; return Python lists.
 #[pyfunction]
-#[pyo3(signature = (cost_matrices, algo, maximize = false))]
+#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0))]
 fn k_assignment<'py>(
     py: Python<'py>,
     cost_matrices: Vec<Bound<'py, PyAny>>,
     algo: &str,
     maximize: bool,
+    max_iter: usize,
+    n_trials: usize,
+    seed: u64,
 ) -> PyResult<Py<PyAny>> {
     let algo = match algo.to_ascii_lowercase().as_str() {
         "a" | "am" => Algo::Am,
@@ -211,10 +205,16 @@ fn k_assignment<'py>(
     } else {
         Sense::Minimize
     };
-    if let Some(result) = try_k_dtype::<f64>(py, &cost_matrices, algo, sense) {
+    let opts = Options {
+        sense,
+        max_iter,
+        n_trials,
+        seed,
+    };
+    if let Some(result) = try_k_dtype::<f64>(py, &cost_matrices, algo, &opts) {
         return Ok(result?.into_pyobject(py)?.unbind().into_any());
     }
-    if let Some(result) = try_k_dtype::<i64>(py, &cost_matrices, algo, sense) {
+    if let Some(result) = try_k_dtype::<i64>(py, &cost_matrices, algo, &opts) {
         return Ok(result?.into_pyobject(py)?.unbind().into_any());
     }
     Err(PyTypeError::new_err(
