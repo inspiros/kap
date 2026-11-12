@@ -286,10 +286,12 @@ class KPartiteGraph:
 def linear_assignment(cost_matrix: Array2DLike,
                       maximize: bool = False,
                       return_free: bool = False,
-                      backend: str = "scipy") -> AssignmentResult:
+                      backend: str = "kap") -> AssignmentResult:
     r"""
     Solve the Linear Sum Assignment Problem. This function is a wrapper around
     backend solvers, which implement the following algorithms:
+    - ``"kap"`` (default): kap's native rectangular shortest augmenting path solver
+      (same algorithm and tie-breaking as scipy), see :func:`kap.linear_sum_assignment`
     - :func:`scipy.optimize.linear_sum_assignment`: modified Jonker-Volgenant
     - :func:`lap.lapjv`: Jonker-Volgenant
     - :func:`lapjv.lapjv`: Jonker-Volgenant
@@ -305,8 +307,8 @@ def linear_assignment(cost_matrix: Array2DLike,
         return_free (bool): Return unmatched vertices if true.
             Defaults to False.
         backend (str): The backend used to solve the linear assignment problem.
-            Supported backends are "scipy", "lap", "lapjv", "lapsolver", "munkres".
-            Defaults to "scipy".
+            Supported backends are "kap", "scipy", "lap", "lapjv", "lapsolver", "munkres".
+            Defaults to "kap".
 
     Returns:
         matching_results: A namedtuple of ``matches``, ``matching_costs``,
@@ -318,9 +320,14 @@ def linear_assignment(cost_matrix: Array2DLike,
     References:
         [1] https://github.com/berhane/LAP-solvers
     """
+    cost_matrix = np.asarray(cost_matrix)
     error_msg = ("backend \"{backend}\" is selected but not installed. "
                  "Please install with: pip install {backend}")
-    if backend == "scipy":
+    if backend == "kap":
+        from .._lap import linear_sum_assignment
+        row_ind, col_ind = linear_sum_assignment(cost_matrix, maximize=maximize)
+        matches = np.stack([row_ind, col_ind]).T
+    elif backend == "scipy":
         try:
             from scipy.optimize import linear_sum_assignment
         except ModuleNotFoundError:
@@ -358,7 +365,7 @@ def linear_assignment(cost_matrix: Array2DLike,
         m = Munkres()
         matches = np.array(m.compute(cost_matrix.copy() if not maximize else -cost_matrix))
     else:
-        raise ValueError(f"backend must be either scipy | lap | lapjv | lapsolver | munkres. "
+        raise ValueError(f"backend must be either kap | scipy | lap | lapjv | lapsolver | munkres. "
                          f"Got {backend}.")
     matching_costs = cost_matrix[tuple(matches.T.tolist())]
 
@@ -375,7 +382,7 @@ def linear_assignment(cost_matrix: Array2DLike,
 def solve_Am(G: KPartiteGraph,
              maximize: bool = False,
              matching_filter=None,
-             backend: str = "scipy") -> KPartiteGraph:
+             backend: str = "kap") -> KPartiteGraph:
     Gq = G.clone()
     for _ in range(G.n_partites - 1):
         # construct quotient graph by merging the two first partites
@@ -389,7 +396,7 @@ def solve_Bm(G: KPartiteGraph,
              maximize: bool = False,
              matching_filter=None,
              return_partites_choices: bool = False,
-             backend: str = "scipy") -> Union[KPartiteGraph, Tuple[KPartiteGraph, List[Tuple[int, int]]]]:
+             backend: str = "kap") -> Union[KPartiteGraph, Tuple[KPartiteGraph, List[Tuple[int, int]]]]:
     best_Gq = None
     best_score = np.inf if not maximize else -np.inf
     best_choices = None
@@ -421,7 +428,7 @@ def solve_Bm(G: KPartiteGraph,
 def solve_Cm(G: KPartiteGraph,
              maximize: bool = False,
              max_iter: int = 100,
-             backend: str = "scipy") -> KPartiteGraph:
+             backend: str = "kap") -> KPartiteGraph:
     # init with Bm
     Gq, choices = solve_Bm(G, maximize,
                            return_partites_choices=True,
@@ -458,7 +465,7 @@ def solve_Cm(G: KPartiteGraph,
 def solve_Dm(G: KPartiteGraph,
              maximize: bool = False,
              return_partites_choices: bool = False,
-             backend: str = "scipy") -> Union[KPartiteGraph, Tuple[KPartiteGraph, List[Tuple[int, int]]]]:
+             backend: str = "kap") -> Union[KPartiteGraph, Tuple[KPartiteGraph, List[Tuple[int, int]]]]:
     last_Gq = G.clone()
     choices = []
     while last_Gq.n_partites > 1:
@@ -489,7 +496,7 @@ def _Em_loop(G: KPartiteGraph,
              first_partite_pair: Tuple[int, int],
              maximize: bool = False,
              max_iter: int = 100,
-             backend: str = "scipy",
+             backend: str = "kap",
              random_state: np.random.RandomState = np.random.RandomState()) -> Tuple[KPartiteGraph, float]:
     best_Gq = G_init
     best_score = G_init.vertices_cost()
@@ -525,7 +532,7 @@ def solve_Em(G: KPartiteGraph,
              maximize: bool = False,
              max_iter: int = 100,
              n_trials: int = 1,
-             backend: str = "scipy",
+             backend: str = "kap",
              random_state: Optional[Union[np.random.RandomState, int]] = None) -> KPartiteGraph:
     if max_iter <= 0:
         raise ValueError(f"max_iter must be a positive integer. Got {max_iter}.")
@@ -555,7 +562,7 @@ def solve_Em(G: KPartiteGraph,
 def solve_Fm(G: KPartiteGraph,
              maximize: bool = False,
              max_iter: int = 100,
-             backend: str = "scipy",
+             backend: str = "kap",
              random_state: Optional[Union[np.random.RandomState, int]] = None) -> KPartiteGraph:
     if max_iter <= 0:
         raise ValueError(f"max_iter must be a positive integer. Got {max_iter}.")
@@ -618,7 +625,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
                  n_trials: int = 1,
                  maximize: bool = False,
                  return_free: bool = False,
-                 backend: str = "scipy",
+                 backend: str = "kap",
                  random_state: Optional[Union[np.random.RandomState, int]] = None) -> AssignmentResult:
     r"""
     Solve the k-Assignment Problem using Gabrovšek's multiple Hungarian methods,
@@ -639,8 +646,8 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         return_free (bool): Return unmatched vertices if true.
             Defaults to False.
         backend (str): The backend used to solve the linear assignment problem.
-            Supported backends are "scipy", "lap", "lapjv", "lapsolver", "munkres".
-            Defaults to "scipy".
+            Supported backends are "kap", "scipy", "lap", "lapjv", "lapsolver", "munkres".
+            Defaults to "kap".
         random_state (RandomState, int, optional): Controls the pseudo random
             number generation for shuffling or choosing random partites pair in
             Em and Fm algorithms. Pass an int for reproducible output across

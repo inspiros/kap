@@ -132,10 +132,10 @@ def test_random_state_reproducibility(instance_factory, algo, dtype, maximize):
 
 
 @pytest.mark.parametrize("algo", ("Am", "Bm", "Dm"))
-@pytest.mark.parametrize("backend", ("scipy", "lap", "munkres"))
+@pytest.mark.parametrize("backend", ("kap", "scipy", "lap", "munkres"))
 @pytest.mark.parametrize("seed", (23, 91))
 def test_backend_parity(instance_factory, algo, backend, seed):
-    pytest.importorskip(backend)
+    pytest.importorskip("kap._core" if backend == "kap" else backend)
     costs = instance_factory(4, n=3, seed=seed)
     reference = kap.k_assignment(costs, algo=algo, **SOLVER_OPTIONS)
     result = kap.k_assignment(costs, algo=algo, **dict(SOLVER_OPTIONS, backend=backend))

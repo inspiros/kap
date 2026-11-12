@@ -4,11 +4,11 @@
 pip install kap
 ```
 
-`kap` needs only `numpy`, plus at least one LAP backend. Install a backend
-with its extra:
+`kap` needs only `numpy`; its native LAP solver is the default backend.
+Other backends are optional extras:
 
 ```bash
-pip install "kap[scipy]"     # scipy.optimize.linear_sum_assignment (default)
+pip install "kap[scipy]"     # scipy.optimize.linear_sum_assignment
 pip install "kap[lap]"       # lap.lapjv
 pip install "kap[lapjv]"     # lapjv.lapjv (square matrices only)
 pip install "kap[munkres]"   # munkres (pure Python, slow)

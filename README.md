@@ -45,8 +45,8 @@ Further maintenance or performance tuning might be limited, but all contribution
 
 - **Python 3.9+**
 - ``numpy``
-- ``scipy`` or ``lap`` or ``lapjv`` or ``lapsolver`` or ``munkres``
-  _(depends on the backend to be used for solving Linear Assignment Problem)_
+- optional: ``scipy``, ``lap``, ``lapjv``, ``lapsolver`` or ``munkres``
+  _(alternative backends for the Linear Assignment Problem; the native ``kap`` backend is built in)_
 
 ## Installation
 
@@ -58,7 +58,7 @@ pip install kap
 
 #### Notes
 
-This is currently a pure Python project, but we may add Cython/C++ extension in the future.
+kap now ships a native Rust core (crate [``kap-solver``](crates/kap-solver)); wheels need no compiler.
 
 Full documentation is in [docs](docs/index.md).
 
@@ -68,6 +68,7 @@ Full documentation is in [docs](docs/index.md).
 
 For convenience, we provide ``kap.linear_assignment`` as a wrapper around backend functions.
 The available backends are:
+- ``kap`` (default): built-in native solver, same results as scipy; also available directly as ``kap.linear_sum_assignment``
 - ``scipy``: [``scipy.optimize.linear_sum_assignment``'s documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.linear_sum_assignment.html)
 - ``lap``: https://github.com/gatagat/lap
 - ``lapjv``: https://github.com/src-d/lapjv

@@ -97,15 +97,19 @@ def scipy_assignment():
     return pytest.importorskip("scipy.optimize").linear_sum_assignment
 
 
-@pytest.fixture(params=("scipy", "lap", "lapjv", "munkres"))
+def _require_backend(name):
+    pytest.importorskip("kap._core" if name == "kap" else name)
+
+
+@pytest.fixture(params=("kap", "scipy", "lap", "lapjv", "munkres"))
 def backend(request):
-    pytest.importorskip(request.param)
+    _require_backend(request.param)
     return request.param
 
 
-@pytest.fixture(params=("scipy", "lap", "munkres"))
+@pytest.fixture(params=("kap", "scipy", "lap", "munkres"))
 def rectangular_backend(request):
-    pytest.importorskip(request.param)
+    _require_backend(request.param)
     return request.param
 
 

@@ -3,6 +3,8 @@
 ## Linear assignment
 
 `kap.linear_assignment` gives every backend the same interface.
+`kap.linear_sum_assignment` calls the native solver directly, with the same
+signature and results as `scipy.optimize.linear_sum_assignment`.
 
 ```python
 import numpy as np
@@ -11,7 +13,7 @@ from kap import linear_assignment
 cost = np.array([[9, 6, 4],
                  [4, 4, 6],
                  [3, 9, 2]])
-res = linear_assignment(cost, return_free=True, backend="scipy")
+res = linear_assignment(cost, return_free=True)  # backend="kap" by default
 res.matches         # array of (row, col) pairs
 res.matching_costs  # cost of each matched pair
 res.free            # unmatched vertices as (0, row) or (1, col)
@@ -21,10 +23,10 @@ Arguments:
 
 | Argument | Meaning |
 |---|---|
-| `cost_matrix` | 2D `numpy` array (rectangular allowed, except with `lapjv`) |
+| `cost_matrix` | 2D array or nested list (rectangular allowed, except with `lapjv`) |
 | `maximize` | maximize total weight instead of minimizing cost |
 | `return_free` | also return the unmatched vertices |
-| `backend` | `"scipy"`, `"lap"`, `"lapjv"`, `"lapsolver"` or `"munkres"` |
+| `backend` | `"kap"` (default, native), `"scipy"`, `"lap"`, `"lapjv"`, `"lapsolver"` or `"munkres"` |
 
 ## k-assignment
 
@@ -36,7 +38,7 @@ Partite sizes may differ.
 ```python
 from kap import k_assignment
 
-res = k_assignment(cost_matrices, algo="Cm", backend="scipy")
+res = k_assignment(cost_matrices, algo="Cm")
 res.matches         # list of matches, each a list of (partite, node) tuples
 res.matching_costs  # cost of each match: sum over all pairs of its members
 res.free            # with return_free=True, the unmatched vertices

@@ -7,4 +7,6 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub mod lap;
 
-pub use lap::{LapError, LapSolution, LapSolver, MatrixView, Sense, linear_sum_assignment};
+pub use lap::{
+    Acc, Cost, Duals, LapError, LapSolution, LapSolver, MatrixView, Sense, linear_sum_assignment,
+};
