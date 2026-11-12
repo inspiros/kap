@@ -348,3 +348,6 @@ wheelhouse/
 
 # secret
 develop/
+
+# local dev environment
+.venv/
