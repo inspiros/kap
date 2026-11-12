@@ -1,0 +1,48 @@
+name: Publish
+
+# Manual only: Actions > Publish > Run workflow, then pick the release tag (v*) as the ref.
+on:
+  workflow_dispatch:
+
+jobs:
+  check_ref:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a v* tag
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) echo "Publishing $GITHUB_REF_NAME" ;;
+            *) echo "::error::Run this workflow on a release tag (v*), not $GITHUB_REF"; exit 1 ;;
+          esac
+
+  build:
+    needs: check_ref
+    uses: ./.github/workflows/build_wheels.yml
+
+  publish_on_pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: artifact-*
+          merge-multiple: true
+      - name: Check that the tag matches the package version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ls dist
+          for f in dist/*; do
+            case "$(basename "$f")" in
+              kap-"$version"-*|kap-"$version".tar.gz) ;;
+              *) echo "::error::$f does not match tag $GITHUB_REF_NAME"; exit 1 ;;
+            esac
+          done
+      # Uses the repository secret PYPI_PASSWORD (a PyPI API token) when set;
+      # if it is empty, falls back to trusted publishing (id-token above).
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.pypi_password }}
