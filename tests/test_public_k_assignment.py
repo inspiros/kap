@@ -262,3 +262,11 @@ def test_negative_seed_rejected(paper_costs):
 def test_invalid_random_state_rejected(paper_costs):
     with pytest.raises(TypeError, match="random_state"):
         kap.k_assignment(paper_costs, random_state=1.5)
+
+
+def test_uint64_beyond_int64_rejected():
+    big = np.full((2, 2), np.iinfo(np.int64).max, dtype=np.uint64) + np.uint64(1)
+    with pytest.raises(OverflowError, match="int64 range"):
+        kap.k_assignment([big, big, big], algo="Am")
+    small = [np.arange(4, dtype=np.uint64).reshape(2, 2)] * 3
+    assert kap.k_assignment(small, algo="Am") == kap._reference.k_assignment(small, algo="Am")

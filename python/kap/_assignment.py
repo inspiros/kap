@@ -58,6 +58,13 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         if matrix.dtype.kind not in "biuf":
             raise TypeError(f"unsupported cost matrix dtype {matrix.dtype}")
     dtype = np.int64 if all(m.dtype.kind in "biu" for m in cost_matrices) else np.float64
+    if dtype is np.int64:
+        int64_max = np.iinfo(np.int64).max
+        for matrix in cost_matrices:
+            if matrix.dtype == np.uint64 and matrix.size and matrix.max() > int64_max:
+                raise OverflowError("uint64 cost matrix values exceed the int64 range "
+                                    "supported by the native solver; convert to float64 "
+                                    "or use another backend.")
     matrices = [np.asarray(matrix, dtype=dtype) for matrix in cost_matrices]
     # Ignore options unused by the selected algorithm, as the reference does.
     iterations = 100
