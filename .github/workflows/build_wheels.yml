@@ -38,7 +38,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      # abi3-py39 wheels: any newer interpreter builds them
+      # abi3-py310 wheels: any newer interpreter builds them
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -54,11 +54,11 @@ jobs:
 
   test:
     needs: wheels
-    # ubuntu-latest (26.04) has no Python 3.9
+    # ubuntu-24.04: setup-python builds for 3.10 (EOL 2026-10) may be missing on 26.04
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        python: ['3.9', '3.13']
+        python: ['3.10', '3.14']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

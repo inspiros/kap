@@ -16,4 +16,4 @@ crate-type = ["cdylib"]
 [dependencies]
 kap-solver = { workspace = true, features = ["rayon"] }
 numpy = { workspace = true }
-pyo3 = { workspace = true, features = ["extension-module", "abi3-py39"] }
+pyo3 = { workspace = true, features = ["extension-module", "abi3-py310"] }

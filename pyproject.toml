@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.txt"]
 authors = [{ name = "Hoang-Nhat Tran (inspiros)", email = "hnhat.tran@gmail.com" }]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ["numpy"]
 keywords = ["k-assignment", "k-partite-matching", "linear-assignment", "bi-partite-matching", "hungarian"]
 classifiers = [

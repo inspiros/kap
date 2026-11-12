@@ -14,7 +14,7 @@ pip install "kap[lapjv]"     # lapjv.lapjv (square matrices only)
 pip install "kap[munkres]"   # munkres (pure Python, slow)
 ```
 
-Python 3.9 or newer is required.
+Python 3.10 or newer is required.
 
 ## From source
 
