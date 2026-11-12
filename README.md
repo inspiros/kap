@@ -170,21 +170,6 @@ print("Total cost:", sum(matching_result.matching_costs))
 
 These code blocks are extracted from [examples](examples).
 
-## Citation
-
-```bibtex
-@software{tran_2026_19097964,
-  author       = {Hoang-Nhat Tran},
-  title        = {inspiros/kap: v0.2.2},
-  month        = mar,
-  year         = 2026,
-  publisher    = {Zenodo},
-  version      = {v0.2.2},
-  doi          = {10.5281/zenodo.19097964},
-  url          = {https://doi.org/10.5281/zenodo.19097964},
-}
-```
-
 ## License
 
 MIT licensed. See [LICENSE.txt](LICENSE.txt).
