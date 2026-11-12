@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use kap::{Cost, LapError, LapSolver, MatrixView, Sense};
+use kap::{Algo, Cost, KSolution, LapError, LapSolver, MatrixView, Options, Sense};
 use numpy::ndarray::ArrayView2;
 use numpy::{Element, PyArray1, PyReadonlyArray2};
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -119,10 +119,114 @@ fn linear_sum_assignment<'py>(
     Ok((to_py(rows), to_py(cols)))
 }
 
+type KResult<A> = (Vec<Vec<(usize, usize)>>, Vec<A>, Vec<(usize, usize)>);
+
+fn try_k_dtype<'py, T>(
+    py: Python<'py>,
+    costs: &[Bound<'py, PyAny>],
+    algo: Algo,
+    sense: Sense,
+) -> Option<PyResult<KResult<T::Acc>>>
+where
+    T: Cost + Element,
+    T::Acc: Cost<Acc = T::Acc>,
+{
+    let arrays: Vec<PyReadonlyArray2<'py, T>> = costs
+        .iter()
+        .map(|cost| cost.extract().ok())
+        .collect::<Option<_>>()?;
+    let arrays: Vec<_> = arrays.iter().map(|a| a.as_array()).collect();
+    // Borrow contiguous inputs; only irregularly strided inputs need a staging copy.
+    let owned: Vec<Option<Vec<T>>> = arrays
+        .iter()
+        .map(|a| {
+            if a.to_slice().is_some() || a.t().to_slice().is_some() {
+                None
+            } else {
+                Some(a.iter().copied().collect())
+            }
+        })
+        .collect();
+    let views = arrays
+        .iter()
+        .zip(&owned)
+        .map(|(a, owned)| {
+            let (r, c) = a.dim();
+            if let Some(data) = a.to_slice() {
+                MatrixView::from_row_major(data, r, c)
+            } else if let Some(data) = a.t().to_slice() {
+                MatrixView::from_row_major(data, c, r).map(MatrixView::t)
+            } else {
+                MatrixView::from_row_major(owned.as_ref().expect("staging copy"), r, c)
+            }
+        })
+        .collect::<Result<Vec<_>, _>>();
+    Some(views.map_err(lap_error).and_then(|views| {
+        py.detach(|| {
+            kap::k_assignment(
+                &views,
+                algo,
+                &Options {
+                    sense,
+                    ..Options::default()
+                },
+            )
+        })
+        .map(
+            |KSolution {
+                 cliques,
+                 costs,
+                 free,
+                 ..
+             }| (cliques, costs, free),
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+    }))
+}
+
+/// Solve a k-partite problem using Am, Bm, or Dm; return Python lists.
+#[pyfunction]
+#[pyo3(signature = (cost_matrices, algo, maximize = false))]
+fn k_assignment<'py>(
+    py: Python<'py>,
+    cost_matrices: Vec<Bound<'py, PyAny>>,
+    algo: &str,
+    maximize: bool,
+) -> PyResult<Py<PyAny>> {
+    let algo = match algo.to_ascii_lowercase().as_str() {
+        "a" | "am" => Algo::Am,
+        "b" | "bm" => Algo::Bm,
+        "c" | "cm" => Algo::Cm,
+        "d" | "dm" => Algo::Dm,
+        "e" | "em" => Algo::Em,
+        "f" | "fm" => Algo::Fm,
+        _ => {
+            return Err(PyValueError::new_err(
+                "algo must be Am | Bm | Cm | Dm | Em | Fm",
+            ));
+        }
+    };
+    let sense = if maximize {
+        Sense::Maximize
+    } else {
+        Sense::Minimize
+    };
+    if let Some(result) = try_k_dtype::<f64>(py, &cost_matrices, algo, sense) {
+        return Ok(result?.into_pyobject(py)?.unbind().into_any());
+    }
+    if let Some(result) = try_k_dtype::<i64>(py, &cost_matrices, algo, sense) {
+        return Ok(result?.into_pyobject(py)?.unbind().into_any());
+    }
+    Err(PyTypeError::new_err(
+        "cost_matrices must contain 2-D numpy arrays, all float64 or all int64 in native byte order",
+    ))
+}
+
 /// Native core of the `kap` Python package.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", kap::VERSION)?;
     m.add_function(wrap_pyfunction!(linear_sum_assignment, m)?)?;
+    m.add_function(wrap_pyfunction!(k_assignment, m)?)?;
     Ok(())
 }

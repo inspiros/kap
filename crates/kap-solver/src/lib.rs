@@ -5,7 +5,12 @@
 /// Version of this crate, shared with the `kap` Python package.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+pub mod algo;
+pub mod kpartite;
 pub mod lap;
+
+pub use algo::{Algo, Options, k_assignment};
+pub use kpartite::{KPartite, KSolution, KapError, Quotient};
 
 pub use lap::{
     Acc, Cost, Duals, LapError, LapSolution, LapSolver, MatrixView, Sense, linear_sum_assignment,
