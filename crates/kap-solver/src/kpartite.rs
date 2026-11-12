@@ -77,6 +77,31 @@ fn index(k: usize, a: usize, b: usize) -> usize {
     k * a + b - a * (a + 1) / 2 - a - 1
 }
 
+fn write_row<A: Copy>(dst: &mut [std::mem::MaybeUninit<A>], src: &[A]) {
+    for (d, &x) in dst.iter_mut().zip(src) {
+        d.write(x);
+    }
+}
+
+/// `dst` = transpose of the row-major `rows x cols` matrix `src`, cache-blocked.
+fn transpose_into<A: Copy>(dst: &mut Vec<A>, src: &[A], rows: usize, cols: usize) {
+    const B: usize = 32;
+    dst.clear();
+    if rows * cols == 0 {
+        return;
+    }
+    dst.resize(rows * cols, src[0]);
+    for r0 in (0..rows).step_by(B) {
+        for c0 in (0..cols).step_by(B) {
+            for r in r0..(r0 + B).min(rows) {
+                for c in c0..(c0 + B).min(cols) {
+                    dst[c * rows + r] = src[r * cols + c];
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct Dense<A> {
     data: Arc<[A]>,
@@ -360,36 +385,79 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
                 }
             })
             .collect();
+        // `rows` lists the matched pairs, then a's unmatched nodes, then b's.
+        let k = self.n_parts();
+        let mut scratch = Vec::new();
         let mut matrices = Vec::new();
         for i in 0..pre.len() {
             for j in i + 1..pre.len() {
                 let (pi, pj) = (pre[i], pre[j]);
                 if pi != a && pj != a {
-                    matrices.push(self.matrices[index(self.n_parts(), pi, pj)].clone());
+                    matrices.push(self.matrices[index(k, pi, pj)].clone());
                     continue;
                 }
                 let other = if pi == a { pj } else { pi };
-                let m1 = self.matrix(a, other);
-                let m2 = self.matrix(b, other);
+                let no = self.n_nodes(other);
                 let (nr, nc) = if pi == a {
-                    (rows.len(), self.n_nodes(other))
+                    (rows.len(), no)
                 } else {
-                    (self.n_nodes(other), rows.len())
+                    (no, rows.len())
                 };
-                let mut data = Vec::with_capacity(nr * nc);
-                for r in 0..nr {
-                    for c in 0..nc {
-                        let (node, o) = if pi == a { (r, c) } else { (c, r) };
-                        data.push(match rows[node] {
-                            (Some(r), Some(c)) => m1.get(r, o) + m2.get(c, o),
-                            (Some(r), None) => m1.get(r, o),
-                            (None, Some(c)) => m2.get(c, o),
+                let mut data = Arc::<[A]>::new_uninit_slice(nr * nc);
+                let out = Arc::get_mut(&mut data).expect("fresh allocation");
+                if nr * nc > 0 && pi == a {
+                    // Merged nodes are the rows: add a's row r to b's row c.
+                    // a < other, so (a, other) is stored with a's nodes as rows.
+                    let ma = &self.matrices[index(k, a, other)].data;
+                    let mb: &[A] = if b < other {
+                        &self.matrices[index(k, b, other)].data
+                    } else {
+                        // (other, b) is stored with other's nodes as rows;
+                        // transpose it once so b's rows are contiguous.
+                        let src = &self.matrices[index(k, other, b)].data;
+                        transpose_into(&mut scratch, src, no, self.n_nodes(b));
+                        &scratch
+                    };
+                    for (dst, &(r, c)) in out.chunks_exact_mut(no).zip(&rows) {
+                        match (r, c) {
+                            (Some(r), Some(c)) => {
+                                let ra = &ma[r * no..(r + 1) * no];
+                                let rb = &mb[c * no..(c + 1) * no];
+                                for ((d, &x), &y) in dst.iter_mut().zip(ra).zip(rb) {
+                                    d.write(x + y);
+                                }
+                            }
+                            (Some(r), None) => write_row(dst, &ma[r * no..(r + 1) * no]),
+                            (None, Some(c)) => write_row(dst, &mb[c * no..(c + 1) * no]),
                             _ => unreachable!(),
-                        });
+                        }
+                    }
+                } else if nr * nc > 0 {
+                    // Merged nodes are the columns; other < a < b, so both
+                    // (other, a) and (other, b) are stored with other's rows.
+                    let ma = &self.matrices[index(k, other, a)].data;
+                    let mb = &self.matrices[index(k, other, b)].data;
+                    let (na, nb) = (self.n_nodes(a), self.n_nodes(b));
+                    for (o, dst) in out.chunks_exact_mut(nc).enumerate() {
+                        let ra = &ma[o * na..(o + 1) * na];
+                        let rb = &mb[o * nb..(o + 1) * nb];
+                        for (d, &(r, c)) in dst.iter_mut().zip(&rows) {
+                            d.write(match (r, c) {
+                                (Some(r), Some(c)) => ra[r] + rb[c],
+                                (Some(r), None) => ra[r],
+                                (None, Some(c)) => rb[c],
+                                _ => unreachable!(),
+                            });
+                        }
                     }
                 }
+                // SAFETY: the loops above wrote every one of the nr * nc
+                // slots: chunks_exact_mut covers `out` exactly, since its
+                // length is nr * nc and the chunk length is nc (no or
+                // rows.len()), with nr chunks zipped against nr row entries.
+                let data = unsafe { data.assume_init() };
                 matrices.push(Dense {
-                    data: data.into(),
+                    data,
                     rows: nr,
                     cols: nc,
                 });
