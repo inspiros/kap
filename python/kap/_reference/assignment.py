@@ -537,10 +537,7 @@ def solve_Em(G: KPartiteGraph,
              n_trials: int = 1,
              backend: str = "kap",
              random_state: Optional[Union[np.random.RandomState, int]] = None) -> KPartiteGraph:
-    if max_iter <= 0:
-        raise ValueError(f"max_iter must be a positive integer. Got {max_iter}.")
-    if n_trials <= 0:
-        raise ValueError(f"n_trials must be a positive integer. Got {n_trials}.")
+    _validate_search_options("e", max_iter, n_trials)
     if not isinstance(random_state, np.random.RandomState):
         random_state = np.random.RandomState(random_state)
 
@@ -568,8 +565,7 @@ def solve_Fm(G: KPartiteGraph,
              max_iter: int = 100,
              backend: str = "kap",
              random_state: Optional[Union[np.random.RandomState, int]] = None) -> KPartiteGraph:
-    if max_iter <= 0:
-        raise ValueError(f"max_iter must be a positive integer. Got {max_iter}.")
+    _validate_search_options("f", max_iter)
     if not isinstance(random_state, np.random.RandomState):
         random_state = np.random.RandomState(random_state)
 
@@ -631,6 +627,50 @@ def solve_Fm(G: KPartiteGraph,
     return best_Gq
 
 
+def _validate_search_options(algo, max_iter, n_trials=1):
+    if algo in ("e", "f") and max_iter <= 0:
+        raise ValueError(f"max_iter must be a positive integer. Got {max_iter}.")
+    if algo == "e" and n_trials <= 0:
+        raise ValueError(f"n_trials must be a positive integer. Got {n_trials}.")
+
+
+def _validate_cost_matrices(cost_matrices):
+    """Normalize array-like inputs and validate the condensed graph dimensions."""
+    if not len(cost_matrices):
+        raise ValueError("cost_matrices is empty.")
+    if not isinstance(cost_matrices, np.ndarray):
+        cost_matrices = [np.asarray(cost_matrix) for cost_matrix in cost_matrices]
+    if not all(cost_matrix.ndim == 2 for cost_matrix in cost_matrices):
+        raise ValueError("cost_matrices must be sequence of 2D arrays.")
+    n_partites = _compute_n_partites(cost_matrices)
+    if not n_partites:
+        raise ValueError("Invalid number of cost matrices. Expected len(cost_matrices) = n * (n - 1) / 2,"
+                         f" where n is number of partites. Got {len(cost_matrices)}.")
+    n_vertices = np.full((n_partites,), -1, np.int64)
+    for cid, (p0, p1) in enumerate(itertools.combinations(range(n_partites), r=2)):
+        if n_vertices[p0] == -1:
+            n_vertices[p0] = cost_matrices[cid].shape[0]
+        elif n_vertices[p0] != cost_matrices[cid].shape[0]:
+            raise ValueError("Number of vertices do not match the dimension of cost matrices. "
+                             f"Expected cost_matrices[{cid}].shape[0]={n_vertices[p0]}. Got {n_vertices[p0]}.")
+        if n_vertices[p1] == -1:
+            n_vertices[p1] = cost_matrices[cid].shape[1]
+        elif n_vertices[p1] != cost_matrices[cid].shape[1]:
+            raise ValueError("Number of vertices do not match the dimension of cost matrices. "
+                             f"Expected cost_matrices[{cid}].shape[1]={n_vertices[p1]}. Got {n_vertices[p1]}.")
+    return cost_matrices, n_partites
+
+
+def _validate_algo(algo):
+    algo = algo.lower()
+    if len(algo) == 2 and algo[1] == "m":
+        algo = algo[0]
+    if algo not in ("a", "b", "c", "d", "e", "f"):
+        raise ValueError("algo must be either Am | Bm | Cm | Dm | Em | Fm "
+                         f"(codenames according to the paper). Got {algo}.")
+    return algo
+
+
 def k_assignment(cost_matrices: Sequence[Array2DLike],
                  algo: str = "Cm",
                  max_iter: int = 100,
@@ -673,35 +713,8 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         [1] Multiple Hungarian Method for k-Assignment Problem.
             *Mathematics*, 8(11), 2050, November 2020, :doi:`10.3390/math8112050`
     """
-    # check inputs
-    if not len(cost_matrices):
-        raise ValueError("cost_matrices is empty.")
-    if not isinstance(cost_matrices, np.ndarray):
-        cost_matrices = [np.asarray(cost_matrix) for cost_matrix in cost_matrices]
-    if not all(cost_matrix.ndim == 2 for cost_matrix in cost_matrices):
-        raise ValueError("cost_matrices must be sequence of 2D arrays.")
-    # check number of cost_matrices
-    n_partites = _compute_n_partites(cost_matrices)
-    if not n_partites:
-        raise ValueError("Invalid number of cost matrices. Expected len(cost_matrices) = n * (n - 1) / 2,"
-                         f" where n is number of partites. Got {len(cost_matrices)}.")
-    # check dimensions of cost_matrices
-    n_vertices = np.full((n_partites,), -1, np.int64)
-    for cid, (p0, p1) in enumerate(itertools.combinations(range(n_partites), r=2)):
-        if n_vertices[p0] == -1:
-            n_vertices[p0] = cost_matrices[cid].shape[0]
-        elif n_vertices[p0] != cost_matrices[cid].shape[0]:
-            raise ValueError("Number of vertices do not match the dimension of cost matrices. "
-                             f"Expected cost_matrices[{cid}].shape[0]={n_vertices[p0]}. Got {n_vertices[p0]}.")
-        if n_vertices[p1] == -1:
-            n_vertices[p1] = cost_matrices[cid].shape[1]
-        elif n_vertices[p1] != cost_matrices[cid].shape[1]:
-            raise ValueError("Number of vertices do not match the dimension of cost matrices. "
-                             f"Expected cost_matrices[{cid}].shape[1]={n_vertices[p1]}. Got {n_vertices[p1]}.")
-
-    algo = algo.lower()
-    if len(algo) == 2 and algo[1] == "m":
-        algo = algo[0]
+    cost_matrices, n_partites = _validate_cost_matrices(cost_matrices)
+    algo = _validate_algo(algo)
 
     G = KPartiteGraph(cost_matrices, n_partites)
     if algo == "a":
@@ -728,6 +741,3 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         Gq = solve_Fm(G, maximize, max_iter,
                       backend=backend, random_state=random_state)
         return Gq.reconstruct(return_free=return_free)
-    else:
-        raise ValueError("algo must be either Am | Bm | Cm | Dm | Em | Fm "
-                         f"(codenames according to the paper). Got {algo}.")
