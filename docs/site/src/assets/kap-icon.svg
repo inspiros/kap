@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">kap icon</title>
+  <desc id="desc">A lowercase k drawn as connected vertices on a deep green rounded square.</desc>
+  <g transform="translate(0 0) scale(1.0)">
+    <rect width="96" height="96" rx="24" fill="#193d38"/>
+    <path d="M28 24V72M68 27L28 51L69 72" fill="none" stroke="#96ddc6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <g fill="#f4faf5"><circle cx="28" cy="24" r="5"/><circle cx="28" cy="51" r="5"/><circle cx="28" cy="72" r="5"/><circle cx="68" cy="27" r="5"/><circle cx="69" cy="72" r="5"/></g>
+  </g>
+</svg>

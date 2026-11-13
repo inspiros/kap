@@ -1,10 +1,203 @@
-:root { --kap-accent: #16776d; }
-.content a { color: var(--links); text-decoration-color: var(--kap-accent); }
-.content table { border-collapse: collapse; width: 100%; }
-.content th, .content td { padding: .55em .75em; }
-.lang-tabs { margin: 1.2em 0; }
-.language-buttons { display: flex; gap: .4em; margin-bottom: .4em; }
-.language-buttons button { padding: .35em .9em; border: 1px solid var(--kap-accent); border-radius: .25em; color: var(--fg); background: var(--bg); cursor: pointer; }
-.language-buttons button[aria-pressed="true"] { color: white; background: var(--kap-accent); }
-.language-buttons button:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+/* kap's palette follows the hero. Keep mdBook's layout and built-in controls. */
+:root {
+  --sidebar-target-width: 272px;
+  --content-max-width: 920px;
+  --page-padding: 32px;
+  --menu-bar-height: 64px;
+  --kap-accent: #16776d;
+  --kap-muted: #536c62;
+  --kap-border: #d7e3dc;
+  --kap-soft: #edf4ee;
+  --kap-code-bg: #f1f5f0;
+}
+.light, .rust {
+  --bg: #fcfdf9;
+  --fg: #263f37;
+  --sidebar-bg: #f0f5ef;
+  --sidebar-fg: #536c62;
+  --sidebar-active: #12685f;
+  --sidebar-spacer: #d7e3dc;
+  --sidebar-header-border-color: #d7e3dc;
+  --links: #126d63;
+  --icons: #667e72;
+  --icons-hover: #193d38;
+  --inline-code-color: #295d52;
+  --theme-popup-bg: #fcfdf9;
+  --theme-popup-border: #d7e3dc;
+  --theme-hover: #e3eee5;
+  --quote-bg: #edf4ee;
+  --quote-border: #16776d;
+  --table-border-color: #d7e3dc;
+  --table-header-bg: #edf4ee;
+  --table-alternate-bg: #f5f8f3;
+  --searchbar-bg: #fcfdf9;
+  --searchbar-fg: #263f37;
+  --searchbar-border-color: #94b7a5;
+  --searchbar-shadow-color: transparent;
+  --searchresults-header-fg: #536c62;
+  --searchresults-border-color: #d7e3dc;
+  --searchresults-li-bg: #edf4ee;
+}
+.navy, .coal, .ayu {
+  --kap-accent: #96ddc6;
+  --kap-muted: #abc0b5;
+  --kap-border: #304940;
+  --kap-soft: #21382f;
+  --kap-code-bg: #15251f;
+  --bg: #182b24;
+  --fg: #dbe8df;
+  --sidebar-bg: #14241e;
+  --sidebar-fg: #abc0b5;
+  --sidebar-active: #96ddc6;
+  --sidebar-spacer: #304940;
+  --sidebar-header-border-color: #304940;
+  --links: #96ddc6;
+  --icons: #abc0b5;
+  --icons-hover: #e1f2e7;
+  --inline-code-color: #ade2cc;
+  --theme-popup-bg: #182b24;
+  --theme-popup-border: #304940;
+  --theme-hover: #284438;
+  --quote-bg: #21382f;
+  --quote-border: #96ddc6;
+  --table-border-color: #304940;
+  --table-header-bg: #21382f;
+  --table-alternate-bg: #1c3028;
+  --searchbar-bg: #14241e;
+  --searchbar-fg: #dbe8df;
+  --searchbar-border-color: #6e9b87;
+  --searchbar-shadow-color: transparent;
+  --searchresults-header-fg: #abc0b5;
+  --searchresults-border-color: #304940;
+  --searchresults-li-bg: #21382f;
+}
+html { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { font-size: 1.6rem; }
+::selection { background: #96ddc6; color: #193d38; }
+:focus-visible { outline: 3px solid var(--kap-accent); outline-offset: 4px; }
+
+/* Header and chapter navigation. CSS branding also works without JavaScript. */
+#mdbook-menu-bar { border-bottom: 1px solid var(--kap-border); }
+.menu-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--fg);
+  font-weight: 650;
+  font-size: 2.6rem;
+  letter-spacing: -1px;
+}
+.menu-title::before {
+  content: "";
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  background: url("../assets/kap-icon.svg") center / contain no-repeat;
+}
+.menu-title::after {
+  content: "DOCUMENTATION";
+  margin-left: 12px;
+  padding-left: 20px;
+  border-left: 1px solid var(--kap-border);
+  font: 500 1.05rem var(--mono-font);
+  letter-spacing: 1.5px;
+  color: var(--kap-muted);
+}
+.sidebar { border-right: 1px solid var(--kap-border); }
+.sidebar .sidebar-scrollbox { padding: 24px 18px; }
+.chapter { font-size: 1.4rem; line-height: 1.5; }
+.chapter li { margin-top: 3px; }
+.chapter li.part-title {
+  margin-top: 26px;
+  margin-bottom: 10px;
+  padding: 0 12px;
+  color: var(--kap-muted);
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.chapter li.part-title:first-child { margin-top: 0; }
+.chapter li.chapter-item { margin-block-start: 2px; }
+.chapter li a { display: block; padding: 6px 12px; border-radius: 7px; }
+.chapter li a:hover { color: var(--links); background: var(--kap-soft); text-decoration: none; }
+.chapter li a.active { color: var(--sidebar-active); background: var(--theme-hover); font-weight: 650; }
+
+/* A reading surface with room for diagrams and dense API tables. */
+.content main { padding-top: 32px; padding-bottom: 72px; }
+.content h1, .content h2, .content h3 { font-weight: 650; line-height: 1.25; }
+.content h1 { margin: 0 0 28px; font-size: 3.6rem; letter-spacing: -1.2px; }
+.content h2 { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--kap-border); font-size: 2.5rem; letter-spacing: -.5px; }
+.content h3 { margin-top: 32px; font-size: 1.9rem; }
+.content p, .content ol, .content ul { line-height: 1.75; }
+.content a { color: var(--links); text-decoration: underline; text-decoration-color: var(--kap-border); text-underline-offset: 3px; }
+.content a:hover { text-decoration-color: var(--kap-accent); }
+.content a.header { text-decoration: none; }
+.content .kap-hero { margin: 0 0 24px; }
+.kap-hero img { display: block; width: 100%; height: auto; border: 1px solid var(--kap-border); border-radius: 18px; box-sizing: border-box; }
+.kap-hero + p { font-size: 1.75rem; color: var(--kap-muted); }
+.kap-quicklinks { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 32px; }
+.content .kap-quicklinks a { display: inline-flex; align-items: center; padding: 10px 18px; border: 1px solid var(--kap-border); border-radius: 8px; background: var(--kap-soft); font-size: 1.4rem; font-weight: 600; text-decoration: none; }
+.content .kap-quicklinks a:first-child { color: #fff; background: #16776d; border-color: #16776d; }
+.content .kap-quicklinks a:hover { border-color: var(--kap-accent); text-decoration: underline; }
+
+/* Keep long signatures and tables scrollable within the reading column. */
+.content .table-wrapper { margin: 24px 0; border: 1px solid var(--kap-border); border-radius: 10px; }
+.content table { border-collapse: collapse; margin: 0; width: 100%; font-size: 1.4rem; line-height: 1.6; }
+.content th, .content td { padding: 14px 16px; border: 0; border-bottom: 1px solid var(--kap-border); text-align: left; vertical-align: top; }
+.content th { font-weight: 650; }
+.content table thead tr { border: 0; }
+.content tr:last-child td { border-bottom: 0; }
+.content td code { white-space: nowrap; }
+.content :not(pre) > code { padding: .15em .35em; border-radius: 4px; background: var(--kap-soft); }
+.content pre { border: 1px solid var(--kap-border); border-radius: 10px; background: var(--kap-code-bg); }
+.content pre > code { border-radius: inherit; padding: 20px; background: var(--kap-code-bg); line-height: 1.7; }
+.content pre > .buttons { top: 8px; right: 6px; }
+.content pre:focus-within > .buttons { visibility: visible; opacity: 1; }
+.content blockquote { margin-inline: 0; padding: 4px 22px; border-radius: 0 8px 8px 0; }
+.lang-tabs { margin: 24px 0; }
+.language-buttons { display: flex; gap: 4px; width: fit-content; margin: 0; align-self: center; flex-shrink: 0; padding: 4px; border: 1px solid var(--kap-border); border-radius: 9px; background: var(--kap-soft); }
+.language-buttons button { min-height: 36px; padding: 6px 20px; border: 0; border-radius: 6px; font-family: inherit; font-size: 1.3rem; font-weight: 600; color: var(--kap-muted); background: transparent; cursor: pointer; }
+.language-buttons button[aria-pressed="true"] { color: white; background: #16776d; }
+.language-buttons button:hover { text-decoration: underline; }
 .lang-tabs pre[hidden] { display: none; }
+.theme-popup { border-radius: 8px; box-shadow: 0 8px 24px #0002; padding: 6px; }
+#mdbook-searchbar { border-radius: 8px; padding: 12px 16px; }
+
+@media (max-width: 600px) {
+  :root { --page-padding: 20px; --menu-bar-height: 56px; }
+  .content main { padding-top: 24px; }
+  .content h1 { font-size: 3rem; margin-bottom: 22px; }
+  .content h2 { font-size: 2.2rem; margin-top: 36px; }
+  .menu-title::after { display: none; }
+  .kap-hero img { border-radius: 10px; }
+  .kap-hero + p { font-size: 1.6rem; }
+  .content th, .content td { padding: 10px 12px; }
+  .content pre > code { padding: 16px; }
+}
+@media print {
+  .content main { padding: 0; }
+  .content h1, .content h2, .content h3 { break-after: avoid; }
+  .kap-quicklinks { display: none; }
+}
+
+/* Task-based entry points keep the home page useful beyond a linear chapter list. */
+.kap-guide-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 24px 0 36px; }
+.content a.kap-guide { display: flex; flex-direction: column; gap: 14px; padding: 22px; border: 1px solid var(--kap-border); border-radius: 12px; background: var(--kap-soft); color: var(--fg); text-decoration: none; }
+.content a.kap-guide:hover { border-color: var(--kap-accent); }
+.kap-guide strong { font-size: 1.6rem; font-weight: 650; }
+.kap-guide strong span { float: right; color: var(--kap-accent); }
+.kap-guide > span:last-child { font-size: 1.35rem; color: var(--kap-muted); line-height: 1.65; }
+.kap-eyebrow { font: 500 1.05rem var(--mono-font); letter-spacing: 1px; color: var(--kap-muted); }
+@media (max-width: 1100px) { .menu-title::after { display: none; } }
+@media (max-width: 700px) { .kap-guide-grid { grid-template-columns: 1fr; } .content a.kap-guide { gap: 10px; padding: 20px; } }
+@media (max-width: 480px) {
+  .menu-title { font-size: 0; gap: 0; min-width: 30px; }
+  .language-buttons { padding: 3px; gap: 2px; }
+  .language-buttons button { padding: 6px 10px; min-height: 34px; }
+  .right-buttons { margin: 0 5px; }
+}
+
+.chapter .on-this-page { margin: 4px 0 10px 12px; border-left-width: 2px; }
+.chapter .on-this-page a { padding-block: 4px; font-size: 1.2rem; }

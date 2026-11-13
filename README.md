@@ -1,4 +1,4 @@
-# kap
+<h1><img src="https://raw.githubusercontent.com/inspiros/kap/master/assets/kap-icon.svg" alt="" width="40" height="40" align="absmiddle" /> kap</h1>
 
 [![Build wheels](https://img.shields.io/github/actions/workflow/status/inspiros/kap/build_wheels.yml)](https://github.com/inspiros/kap/actions/workflows/build_wheels.yml)
 [![Documentation](https://img.shields.io/badge/docs-website-16776d?logo=mdbook&logoColor=white)](https://inspiros.github.io/kap/)
@@ -6,7 +6,7 @@
 [![Downloads](https://static.pepy.tech/badge/kap)](https://pepy.tech/project/kap)
 [![License](https://img.shields.io/github/license/inspiros/kap)](LICENSE.txt)
 
-![Four-part assignment](https://raw.githubusercontent.com/inspiros/kap/master/assets/kpartite_hero.svg)
+![kap: three parts partitioned into three disjoint cliques](https://raw.githubusercontent.com/inspiros/kap/master/assets/kpartite_hero.svg)
 
 `kap` solves k-partite assignment problems from pairwise cost matrices. It partitions vertices into cliques with at most one vertex per part and minimizes the total pairwise cost. The Python package and Rust crate provide heuristics, lower bounds, and linear assignment; Python also provides an exact solver through SciPy and HiGHS.
 

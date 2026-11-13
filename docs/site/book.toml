@@ -1,8 +1,13 @@
 [book]
 title = "kap"
 language = "en"
+description = "Python and Rust solvers for k-partite assignment from pairwise cost matrices."
 src = "src"
 
 [output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+no-section-label = true
+git-repository-url = "https://github.com/inspiros/kap"
 additional-css = ["theme/kap.css"]
 additional-js = ["theme/languages.js"]
