@@ -49,14 +49,14 @@ The package is `kap-solver`; the library import is `kap`. For the version docume
 
 ```toml
 [dependencies]
-kap-solver = "0.3.0-alpha.1"
+kap-solver = "0.3.0"
 ```
 
 The crate's default feature set is empty. Enable `rayon` for parallel chains, trials, or neighborhood work:
 
 ```toml
 [dependencies]
-kap-solver = { version = "0.3.0-alpha.1", features = ["rayon"] }
+kap-solver = { version = "0.3.0", features = ["rayon"] }
 ```
 
 `MatrixView::from_row_major` and `MatrixView::from_strided` require no optional features.

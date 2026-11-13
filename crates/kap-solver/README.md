@@ -1,6 +1,6 @@
 # kap-solver
 
-`kap-solver` provides the Rust core of [kap](https://github.com/inspiros/kap). Add `kap-solver = "0.3"` to `[dependencies]` and import the library as `kap`.
+`kap-solver` provides the Rust core of [kap](https://github.com/inspiros/kap). Add it with `cargo add kap-solver` and import the library as `kap`.
 
 ```rust
 use kap::{k_assignment, Algo, MatrixView, Options};
@@ -15,6 +15,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`k_assignment` runs a selected heuristic; `k_assignment_from` accepts a complete starting solution. `lower_bound` bounds equal-size problems. `linear_sum_assignment` solves rectangular linear assignments. See the [documentation](https://inspiros.github.io/kap/) for inputs and limits.
+`k_assignment` runs a selected heuristic; `k_assignment_from` accepts a complete starting solution, or a partial one when a threshold is set. `lower_bound` bounds equal-size problems. `linear_sum_assignment` solves rectangular linear assignments. See the [documentation](https://inspiros.github.io/kap/) for inputs and limits.
 
 `Options::threshold` enables optional matching with singleton vertices and forbidden pairs; returned costs remain in original units.

@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "kap"
 dynamic = ["version"]
-description = "Gabrovšek's Multiple Hungarian method for solving k-Assignment Problem."
+description = "k-partite assignment solvers with a Rust core and Python bindings."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.txt"]
@@ -32,6 +32,8 @@ test = ["pytest", "scipy", "lap", "lapjv", "munkres"]
 
 [project.urls]
 Source = "https://github.com/inspiros/kap"
+Documentation = "https://inspiros.github.io/kap/"
+Changelog = "https://github.com/inspiros/kap/blob/master/CHANGELOG.md"
 Download = "https://pypi.org/project/kap"
 
 [tool.maturin]
@@ -43,6 +45,8 @@ include = [
     { path = "Cargo.lock", format = "sdist" },
     { path = "crates/**/*", format = "sdist" },
     { path = "README.md", format = "sdist" },
+    { path = "CHANGELOG.md", format = "sdist" },
+    { path = "CITATION.cff", format = "sdist" },
     { path = "LICENSE.txt", format = "sdist" },
 ]
 exclude = ["target/**/*"]

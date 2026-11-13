@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/kap-solver", "crates/kap-python"]
 
 [workspace.package]
-version = "0.3.0-alpha.1"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
@@ -11,7 +11,7 @@ authors = ["Hoang-Nhat Tran (inspiros)"]
 repository = "https://github.com/inspiros/kap"
 
 [workspace.dependencies]
-kap-solver = { path = "crates/kap-solver", version = "=0.3.0-alpha.1" }
+kap-solver = { path = "crates/kap-solver", version = "=0.3.0" }
 ndarray = "0.17"
 numpy = "0.30"
 proptest = "1.12"

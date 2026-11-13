@@ -46,3 +46,19 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.pypi_password }}
+
+  publish_on_crates_io:
+    # Runs after PyPI so a failed wheel build or upload never leaves a crate-only release.
+    needs: publish_on_pypi
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check that the tag matches the crate version
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "kap-solver") | .version')"
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "::error::kap-solver $version does not match tag $GITHUB_REF_NAME"; exit 1; }
+      - run: cargo publish -p kap-solver --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
