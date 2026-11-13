@@ -36,7 +36,7 @@ pub enum KapError {
     TooManyVertices(usize),
     /// Constituent LAP error.
     Lap(LapError),
-    /// An option (`max_iter` or `n_trials`) must be positive.
+    /// An option has an invalid value.
     BadOption(&'static str),
     /// The request exceeds a documented limit of the algorithm.
     Unsupported(&'static str),
@@ -67,6 +67,10 @@ impl fmt::Display for KapError {
             Self::Lap(e) => e.fmt(f),
             Self::Unsupported(what) => f.write_str(what),
             Self::BadOption("initial") => write!(f, "initial is unsupported for this algorithm"),
+            Self::BadOption("threshold") => write!(
+                f,
+                "threshold must be finite, and an integer for integer costs"
+            ),
             Self::BadOption(name) => write!(f, "{name} must be a positive integer"),
         }
     }
@@ -135,6 +139,7 @@ impl<A: Copy> Dense<A> {
 pub struct KPartite<A> {
     sizes: Arc<[usize]>,
     matrices: Arc<[Dense<A>]>,
+    gated: bool,
 }
 
 impl<A: Acc + Cost<Acc = A>> KPartite<A> {
@@ -179,7 +184,64 @@ impl<A: Acc + Cost<Acc = A>> KPartite<A> {
         Ok(Self {
             sizes: sizes.into_iter().map(Option::unwrap).collect(),
             matrices: matrices.into(),
+            gated: false,
         })
+    }
+
+    /// Copy costs shifted by `tau` for optional matching. The unfavorable
+    /// infinity is forbidden: `+inf` for minimization, `-inf` for maximization.
+    pub fn gated(&self, tau: f64, sense: Sense) -> Result<Self, KapError> {
+        let tau = A::from_f64_exact(tau).ok_or(KapError::BadOption("threshold"))?;
+        let offset = tau
+            .checked_neg()
+            .ok_or(KapError::Unsupported("cost overflow"))?;
+        let forbidden = match sense {
+            Sense::Minimize => A::INF,
+            Sense::Maximize => -A::INF,
+        };
+        let mut matrices = Vec::with_capacity(self.matrices.len());
+        for m in self.matrices.iter() {
+            let mut data = Vec::with_capacity(m.data.len());
+            for (i, &value) in m.data.iter().enumerate() {
+                if !value.is_finite() && value != forbidden {
+                    return Err(LapError::InvalidCost(i / m.cols, i % m.cols).into());
+                }
+                data.push(
+                    value
+                        .checked_add(offset)
+                        .ok_or(KapError::Unsupported("cost overflow"))?,
+                );
+            }
+            matrices.push(Dense {
+                data: data.into(),
+                rows: m.rows,
+                cols: m.cols,
+            });
+        }
+        Ok(Self {
+            sizes: self.sizes.clone(),
+            matrices: matrices.into(),
+            gated: true,
+        })
+    }
+
+    /// Recompute clique and total costs from this problem's pair matrices.
+    pub(crate) fn recost(&self, solution: &mut KSolution<A>) {
+        solution.costs.clear();
+        solution.cost = A::ZERO;
+        for clique in &solution.cliques {
+            let mut cost = A::ZERO;
+            for (i, &(a, r)) in clique.iter().enumerate() {
+                for &(b, c) in &clique[i + 1..] {
+                    cost = cost
+                        + self.matrices[index(self.sizes.len(), a, b)]
+                            .view()
+                            .get(r, c);
+                }
+            }
+            solution.costs.push(cost);
+            solution.cost = solution.cost + cost;
+        }
     }
 
     /// Original partite sizes.
@@ -199,6 +261,7 @@ struct Part<A> {
 #[derive(Clone, Debug)]
 pub struct Quotient<A> {
     k_orig: usize,
+    gated: bool,
     parts: Vec<Part<A>>,
     matrices: Vec<Dense<A>>,
     /// Total cost already fixed inside quotient nodes.
@@ -206,6 +269,9 @@ pub struct Quotient<A> {
 }
 
 /// Reconstructed cliques and unmatched vertices in quotient node order.
+/// With a threshold, the objective sums `d - threshold` over pairs within
+/// transversal partial cliques, and singleton vertices are free. Reported
+/// costs from `k_assignment` sum original pair costs without the shift.
 #[derive(Clone, Debug, PartialEq)]
 pub struct KSolution<A> {
     /// Cliques, each in increasing original partite order.
@@ -240,6 +306,7 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
             .collect();
         Self {
             k_orig: k,
+            gated: problem.gated,
             parts,
             matrices: problem.matrices.to_vec(),
             score: A::ZERO,
@@ -312,6 +379,7 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
         }
         Ok(Self {
             k_orig: k,
+            gated: root.gated,
             parts: vec![Part {
                 members: u64::MAX >> (64 - k),
                 nodes: nodes.into(),
@@ -372,6 +440,49 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
         sense: Sense,
     ) -> Result<(Vec<(u32, u32)>, A), KapError> {
         self.check_pair(a, b)?;
+        if self.gated {
+            let m = self.matrix(a, b);
+            let improving = |value| match sense {
+                Sense::Minimize => value < A::ZERO,
+                Sense::Maximize => value > A::ZERO,
+            };
+            let mut clipped = Vec::with_capacity(m.rows() * m.cols());
+            let mut any = false;
+            for r in 0..m.rows() {
+                for c in 0..m.cols() {
+                    let value = m.get(r, c);
+                    // Validate before comparing: an unordered value must not
+                    // silently become zero through the clipping branch.
+                    if value.partial_cmp(&A::ZERO).is_none() {
+                        return Err(LapError::InvalidCost(r, c).into());
+                    }
+                    let keep = improving(value);
+                    any |= keep;
+                    clipped.push(if keep { value } else { A::ZERO });
+                }
+            }
+            if !any {
+                return Ok((Vec::new(), A::ZERO));
+            }
+            #[cfg(test)]
+            LAP_CALLS.with(|n| n.set(n.get() + 1));
+            // Any partial matching extends to a maximum one. Clipping makes
+            // completion non-worsening; dropping zero edges preserves its cost.
+            let sol = solver.solve(
+                MatrixView::from_row_major(&clipped, m.rows(), m.cols())?,
+                sense,
+            )?;
+            let mut matching = Vec::new();
+            let mut cost = A::ZERO;
+            for (r, c) in sol.row_ind.into_iter().zip(sol.col_ind) {
+                let value = m.get(r, c);
+                if improving(value) {
+                    matching.push((r as u32, c as u32));
+                    cost = cost + value;
+                }
+            }
+            return Ok((matching, cost));
+        }
         #[cfg(test)]
         LAP_CALLS.with(|n| n.set(n.get() + 1));
         let sol = solver.solve(self.matrix(a, b), sense)?;
@@ -562,6 +673,7 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
         }
         Ok(Self {
             k_orig: self.k_orig,
+            gated: self.gated,
             parts,
             matrices,
             score: self.score + cost,
@@ -692,6 +804,7 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
         Ok((
             Self {
                 k_orig: k,
+                gated: self.gated,
                 parts,
                 matrices: vec![Dense {
                     data: data.into(),

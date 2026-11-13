@@ -44,6 +44,10 @@ pub trait Acc:
     const ZERO: Self;
     /// Value larger than any finite path length; `+inf` for floats.
     const INF: Self;
+    /// Convert a finite threshold without rounding or saturating integer casts.
+    fn from_f64_exact(x: f64) -> Option<Self>;
+    /// Whether the value is finite (always true for integer accumulators).
+    fn is_finite(self) -> bool;
     /// Whether `self` is a permitted entry of a minimization problem
     /// (finite or `+INF` for floats).
     fn is_valid(self) -> bool;
@@ -60,6 +64,12 @@ pub trait Acc:
 impl Acc for f64 {
     const ZERO: Self = 0.0;
     const INF: Self = f64::INFINITY;
+    fn from_f64_exact(x: f64) -> Option<Self> {
+        x.is_finite().then_some(x)
+    }
+    fn is_finite(self) -> bool {
+        self.is_finite()
+    }
     #[inline]
     fn is_valid(self) -> bool {
         !self.is_nan() && self != f64::NEG_INFINITY
@@ -69,6 +79,14 @@ impl Acc for f64 {
 impl Acc for i64 {
     const ZERO: Self = 0;
     const INF: Self = i64::MAX;
+    fn from_f64_exact(x: f64) -> Option<Self> {
+        // i64::MAX rounds to 2^63 as f64, so the upper bound is exclusive.
+        (x.is_finite() && x.fract() == 0.0 && x >= i64::MIN as f64 && x < -(i64::MIN as f64))
+            .then_some(x as i64)
+    }
+    fn is_finite(self) -> bool {
+        true
+    }
     #[inline]
     fn is_valid(self) -> bool {
         // Leave headroom so that `-x` and the dual updates cannot overflow

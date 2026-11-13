@@ -9,6 +9,8 @@ mod merge;
 mod pairfix;
 
 #[cfg(test)]
+mod gating_tests;
+#[cfg(test)]
 mod initial_tests;
 
 #[cfg(test)]
@@ -58,6 +60,11 @@ pub enum Algo {
 pub struct Options {
     /// Optimization direction.
     pub sense: Sense,
+    /// Optional pair-cost threshold. Optimize sums of `d - threshold` over
+    /// transversal partial cliques, with singletons allowed. `+inf` forbids a
+    /// pair when minimizing, `-inf` when maximizing. Supports Am through Fm and Shift, without DV
+    /// refinement or an initial solution; None preserves complete matching.
+    pub threshold: Option<f64>,
     /// Move limit of Cm, Em (per trial) and Fm; DV sweeps; ILS perturbations; memetic generations.
     pub max_iter: usize,
     /// Number of independent Em trials or ILS chains.
@@ -78,6 +85,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             sense: Sense::Minimize,
+            threshold: None,
             max_iter: 100,
             n_trials: 1,
             seed: 0,
@@ -97,6 +105,10 @@ pub(crate) fn better<A: Acc>(candidate: A, best: A, sense: Sense) -> bool {
 }
 
 /// Solve a condensed k-partite problem using the selected heuristic.
+/// With `opts.threshold = Some(tau)`, optimize the sum of `d - tau` over
+/// pairs within transversal partial cliques; singletons are allowed. `+inf`
+/// forbids a pair when minimizing, `-inf` when maximizing. Returned costs use
+/// the original matrices. Without a threshold, matching behavior is unchanged.
 pub fn k_assignment<T: Cost>(
     mats: &[MatrixView<'_, T>],
     algo: Algo,
@@ -204,7 +216,20 @@ fn run<T: Cost>(
 where
     T::Acc: Cost<Acc = T::Acc>,
 {
-    let problem = KPartite::new(mats)?;
+    let original = KPartite::new(mats)?;
+    if opts.threshold.is_some()
+        && (initial.is_some()
+            || opts.refine.is_some()
+            || matches!(algo, Algo::Dv1 | Algo::DvS | Algo::Ils | Algo::Memetic))
+    {
+        return Err(KapError::Unsupported(
+            "threshold is not yet supported with this algorithm or option",
+        ));
+    }
+    let problem = match opts.threshold {
+        Some(tau) => original.gated(tau, opts.sense)?,
+        None => original.clone(),
+    };
     if initial.is_some() && matches!(algo, Algo::Cm | Algo::Em | Algo::Fm | Algo::Memetic) {
         return Err(KapError::BadOption("initial"));
     }
@@ -264,7 +289,11 @@ where
     if let Some(kind) = opts.refine {
         q = dv::improve(&root, q, kind, opts.max_iter, opts.sense, &mut solver)?;
     }
-    Ok(q.reconstruct())
+    let mut solution = q.reconstruct();
+    if opts.threshold.is_some() {
+        original.recost(&mut solution);
+    }
+    Ok(solution)
 }
 
 /// SplitMix64; one independent stream per (seed, stream).

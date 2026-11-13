@@ -267,6 +267,7 @@ fn k_assignment<'py>(
         .transpose()?;
     let opts = Options {
         sense,
+        threshold: None,
         max_iter,
         n_trials,
         seed,
