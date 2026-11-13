@@ -15,4 +15,5 @@ def k_assignment(
     max_iter: int = 100,
     n_trials: int = 1,
     seed: int = 0,
+    refine: str | None = None,
 ) -> tuple[list[list[tuple[int, int]]], list[float] | list[int], list[tuple[int, int]]]: ...

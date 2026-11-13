@@ -49,8 +49,9 @@ different sizes, some matches are incomplete.
 
 | Argument | Meaning |
 |---|---|
-| `algo` | `"Am"` to `"Fm"`, see [Algorithms](algorithms.md). Default `"Cm"` |
-| `max_iter` | iteration cap for the local-search methods (Cm, Em, Fm) |
+| `algo` | `"Am"` to `"Fm"`, plus `"Shift"`, `"1DV"` and `"sDV"`; see [Algorithms](algorithms.md). Default `"Cm"`; new methods require `backend="kap"` |
+| `refine` | optionally apply `"1DV"` or `"sDV"` after the selected algorithm; requires `backend="kap"` |
+| `max_iter` | move cap for Cm, Em and Fm; sweep cap for 1DV, sDV and `refine` |
 | `n_trials` | number of restarts for Em |
 | `maximize` | maximize instead of minimize |
 | `return_free` | also return unmatched vertices |

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     Algo, Options,
-    algo::{better, bm},
+    algo::{better, bm_path as bm},
     k_assignment,
 };
 use proptest::prelude::*;
@@ -168,7 +168,7 @@ proptest! {
         })).collect();
         for sense in [Sense::Minimize,Sense::Maximize] {
             let optimum = if sense == Sense::Minimize { *totals.iter().min().unwrap() } else { *totals.iter().max().unwrap() };
-            for algo in [Algo::Am,Algo::Bm,Algo::Dm] {
+            for algo in [Algo::Am,Algo::Bm,Algo::Cm,Algo::Dm,Algo::Em,Algo::Fm,Algo::Shift,Algo::Dv1,Algo::DvS] {
                 let sol = k_assignment(&mats,algo,&Options { sense,..Options::default() }).unwrap();
                 prop_assert!(!better(sol.cost,optimum,sense));
             }
@@ -303,7 +303,7 @@ proptest! {
         let root = Quotient::root(&KPartite::new(&mats).unwrap());
         let mut solver = LapSolver::new();
         let start = bm(&root,sense,&mut solver).unwrap().0.reconstruct().cost;
-        let opts = |max_iter, n_trials| Options { sense, max_iter, n_trials, seed };
+        let opts = |max_iter, n_trials| Options { sense, max_iter, n_trials, seed, refine: None };
         for algo in [Algo::Cm,Algo::Em,Algo::Fm] {
             let sol = k_assignment(&mats,algo,&opts(100,3)).unwrap();
             check_valid(&sol,&sizes,&mats);
@@ -339,4 +339,186 @@ fn labels_identify_partitions() {
     assert_eq!(a.labels(), b.labels());
     assert_ne!(a.labels(), c.labels());
     assert_eq!(root.labels(), (0..9).collect::<Vec<u32>>());
+}
+
+const BASE_ALGOS: [Algo; 6] = [Algo::Am, Algo::Bm, Algo::Cm, Algo::Dm, Algo::Em, Algo::Fm];
+
+fn canonical_cliques(sol: KSolution<i64>) -> Vec<(Vec<(usize, usize)>, i64)> {
+    let mut cliques: Vec<_> = sol.cliques.into_iter().zip(sol.costs).collect();
+    cliques.extend(sol.free.into_iter().map(|v| (vec![v], 0)));
+    cliques.sort_unstable();
+    cliques
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(60))]
+    #[test]
+    fn dv_shift_and_refinement((sizes, data, sense) in instance(), seed in any::<u64>()) {
+        use crate::{Dv, algo::{am, dv}};
+        let mats = views(&sizes, &data);
+        let opts = Options { sense, seed, max_iter: 1000, n_trials: 2, ..Options::default() };
+        let root = Quotient::root(&KPartite::new(&mats).unwrap());
+        let mut solver = LapSolver::new();
+        let start = am(&root, sense, &mut solver).unwrap();
+        for algo in [Algo::Shift, Algo::Dv1, Algo::DvS] {
+            let sol = k_assignment(&mats, algo, &opts).unwrap();
+            check_valid(&sol, &sizes, &mats);
+            prop_assert!(!better(start.score, sol.cost, sense));
+        }
+        for algo in BASE_ALGOS {
+            let base = k_assignment(&mats, algo, &opts).unwrap();
+            for kind in [Dv::One, Dv::Subsets] {
+                let refined = k_assignment(&mats, algo, &Options { refine: Some(kind), ..opts.clone() }).unwrap();
+                check_valid(&refined, &sizes, &mats);
+                prop_assert!(!better(base.cost, refined.cost, sense));
+            }
+        }
+        for kind in [Dv::One, Dv::Subsets] {
+            let current = dv::improve(&root, start.clone(), kind, &opts, &mut solver).unwrap();
+            for mask in dv::masks(sizes.len(), kind).unwrap() {
+                let (two, matching) = current.bipartition(&root, mask).unwrap();
+                let fixed = two.fix(0, 1, &matching).unwrap();
+                prop_assert_eq!(fixed.score, current.score);
+                prop_assert_eq!(canonical_cliques(fixed.reconstruct()), canonical_cliques(current.reconstruct()));
+                prop_assert_eq!(two.n_nodes(0).max(two.n_nodes(1)), current.n_nodes(0));
+                prop_assert_eq!(matching.len(), two.n_nodes(0).min(two.n_nodes(1)));
+                let cross: i64 = matching.iter().map(|&(r,c)| two.matrix(0,1).get(r as usize,c as usize)).sum();
+                let (_, best) = two.solve_pair(0, 1, &mut solver, sense).unwrap();
+                prop_assert!(!better(best, cross, sense));
+            }
+        }
+        if sizes.len() == 2 {
+            let optimum = root.solve_pair(0, 1, &mut solver, sense).unwrap().1;
+            prop_assert_eq!(k_assignment(&mats, Algo::Dv1, &opts).unwrap().cost, optimum);
+        }
+        if sizes.len() == 3 {
+            prop_assert_eq!(k_assignment(&mats, Algo::Dv1, &opts).unwrap(), k_assignment(&mats, Algo::DvS, &opts).unwrap());
+        }
+        prop_assert_eq!(k_assignment(&mats, Algo::Dv1, &Options { max_iter: 0, ..opts }).unwrap(), start.reconstruct());
+    }
+}
+
+fn wide_instance() -> impl Strategy<Value = (Vec<usize>, Vec<Vec<i64>>, Sense)> {
+    (2usize..=5)
+        .prop_flat_map(|k| {
+            prop::collection::vec(0usize..=5, k).prop_flat_map(move |sizes| {
+                let entries = (0..k)
+                    .flat_map(|a| (a + 1..k).map(move |b| (a, b)))
+                    .map(|(a, b)| sizes[a] * sizes[b])
+                    .sum::<usize>();
+                (
+                    Just(sizes),
+                    prop::collection::vec(0i64..1_000_000_000, entries),
+                    any::<bool>(),
+                )
+            })
+        })
+        .prop_map(|(sizes, flat, maximize)| {
+            let mut data = Vec::new();
+            let mut offset = 0;
+            for a in 0..sizes.len() {
+                for b in a + 1..sizes.len() {
+                    let end = offset + sizes[a] * sizes[b];
+                    data.push(flat[offset..end].to_vec());
+                    offset = end;
+                }
+            }
+            (
+                sizes,
+                data,
+                if maximize {
+                    Sense::Maximize
+                } else {
+                    Sense::Minimize
+                },
+            )
+        })
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(80))]
+    #[test]
+    fn shift_matches_independent_rotations((sizes, data, sense) in wide_instance()) {
+        let k = sizes.len();
+        let mats = views(&sizes, &data);
+        let opts = Options { sense, ..Options::default() };
+        let mut best = k_assignment(&mats, Algo::Am, &opts).unwrap().cost;
+        for r in 0..k {
+            let perm: Vec<_> = (0..k).map(|p| (p+r)%k).collect();
+            let rotated_sizes: Vec<_> = perm.iter().map(|&p| sizes[p]).collect();
+            let mut rotated_data = Vec::new();
+            for a in 0..k {
+                for b in a+1..k {
+                    let (p,q) = (perm[a],perm[b]);
+                    let m = if p < q { mats[index(k,p,q)] } else { mats[index(k,q,p)].t() };
+                    rotated_data.push((0..m.rows()).flat_map(|i| (0..m.cols()).map(move |j| m.get(i,j))).collect());
+                }
+            }
+            let rotated_mats = views(&rotated_sizes, &rotated_data);
+            let sol = k_assignment(&rotated_mats, Algo::Am, &opts).unwrap();
+            if better(sol.cost, best, sense) { best = sol.cost; }
+        }
+        prop_assert_eq!(k_assignment(&mats, Algo::Shift, &opts).unwrap().cost, best);
+    }
+}
+
+#[test]
+fn dv_masks_errors_and_shift_ties() {
+    use crate::{
+        Dv,
+        algo::{am, dv, shift},
+    };
+    assert_eq!(dv::masks(2, Dv::One).unwrap(), vec![1]);
+    assert_eq!(dv::masks(3, Dv::Subsets).unwrap(), vec![1, 2, 4]);
+    assert_eq!(
+        dv::masks(4, Dv::Subsets).unwrap(),
+        vec![1, 2, 4, 8, 3, 5, 9]
+    );
+    for k in 2..=16 {
+        let masks = dv::masks(k, Dv::Subsets).unwrap();
+        assert_eq!(masks.len(), (1 << (k - 1)) - 1);
+        assert!(
+            masks
+                .windows(2)
+                .all(|w| (w[0].count_ones(), w[0]) < (w[1].count_ones(), w[1]))
+        );
+    }
+    assert_eq!(dv::masks(64, Dv::One).unwrap().len(), 64);
+    let empty = MatrixView::from_row_major(&[] as &[i64], 0, 0).unwrap();
+    for (algo, refine) in [(Algo::DvS, None), (Algo::Am, Some(Dv::Subsets))] {
+        let err = k_assignment(
+            &vec![empty; 17 * 16 / 2],
+            algo,
+            &Options {
+                refine,
+                ..Options::default()
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "sDV requires k <= 16");
+    }
+    let data = vec![vec![0i64; 4]; 6];
+    let mats = views(&[2; 4], &data);
+    let root = Quotient::root(&KPartite::new(&mats).unwrap());
+    let mut solver = LapSolver::new();
+    let current = am(&root, Sense::Minimize, &mut solver).unwrap();
+    assert_eq!(
+        shift(&root, Sense::Minimize, &mut solver)
+            .unwrap()
+            .reconstruct(),
+        current.reconstruct()
+    );
+    for mask in [0, 15, 16, u64::MAX] {
+        assert!(current.bipartition(&root, mask).is_err());
+    }
+    assert!(root.bipartition(&root, 1).is_err());
+    assert!(current.bipartition(&current, 1).is_err());
+    let other = Quotient::root(&KPartite::new(&[empty]).unwrap());
+    assert!(current.bipartition(&other, 1).is_err());
+    let wrong_sizes = Quotient::root(&KPartite::new(&vec![empty; 6]).unwrap());
+    assert!(current.bipartition(&wrong_sizes, 1).is_err());
+    // k=64 must not overflow full-mask construction.
+    let root64 = Quotient::root(&KPartite::new(&vec![empty; 64 * 63 / 2]).unwrap());
+    let final64 = am(&root64, Sense::Minimize, &mut solver).unwrap();
+    assert!(final64.bipartition(&root64, 1u64 << 63).is_ok());
 }

@@ -29,8 +29,10 @@ pub enum KapError {
     TooManyVertices(usize),
     /// Constituent LAP error.
     Lap(LapError),
-    /// An option is out of range (`max_iter` or `n_trials` of Em/Fm is zero).
+    /// An option (`max_iter` or `n_trials`) must be positive.
     BadOption(&'static str),
+    /// The request exceeds a documented limit of the algorithm.
+    Unsupported(&'static str),
 }
 
 impl fmt::Display for KapError {
@@ -52,6 +54,7 @@ impl fmt::Display for KapError {
             Self::BadMatching => write!(f, "invalid part positions or matching"),
             Self::TooManyVertices(n) => write!(f, "partite size {n} exceeds u32 vertex capacity"),
             Self::Lap(e) => e.fmt(f),
+            Self::Unsupported(what) => f.write_str(what),
             Self::BadOption(name) => write!(f, "{name} must be a positive integer"),
         }
     }
@@ -469,6 +472,142 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
             matrices,
             score: self.score + cost,
         })
+    }
+
+    /// Split a final solution into two portions per node, using original costs.
+    /// Side 0 always contains original part 0; empty portions are dropped.
+    /// Returns the two-part quotient and the matching induced by this solution.
+    pub fn bipartition(&self, root: &Self, mask: u64) -> Result<(Self, Vec<(u32, u32)>), KapError> {
+        let k = self.k_orig;
+        let full = u64::MAX >> (64 - k);
+        if self.n_parts() != 1
+            || root.k_orig != k
+            || root.n_parts() != k
+            || (0..k).any(|p| root.members(p) != 1 << p)
+            || mask == 0
+            || mask == full
+            || mask & !full != 0
+        {
+            return Err(KapError::BadMatching);
+        }
+        let masks = if mask & 1 != 0 {
+            [mask, full ^ mask]
+        } else {
+            [full ^ mask, mask]
+        };
+        let mut counts = vec![0; k];
+        for node in self.parts[0].nodes.chunks_exact(k) {
+            for (p, &v) in node.iter().enumerate() {
+                if v != NONE {
+                    if v as usize >= root.n_nodes(p) {
+                        return Err(KapError::BadMatching);
+                    }
+                    counts[p] += 1;
+                }
+            }
+        }
+        if (0..k).any(|p| counts[p] != root.n_nodes(p)) {
+            return Err(KapError::BadMatching);
+        }
+        let mut nodes = [Vec::new(), Vec::new()];
+        let mut matching = Vec::new();
+        for node in self.parts[0].nodes.chunks_exact(k) {
+            let mut ids = [None, None];
+            for side in 0..2 {
+                if (0..k).any(|p| masks[side] & (1 << p) != 0 && node[p] != NONE) {
+                    ids[side] = Some((nodes[side].len() / k) as u32);
+                    nodes[side].extend(
+                        node.iter()
+                            .enumerate()
+                            .map(|(p, &v)| if masks[side] & (1 << p) != 0 { v } else { NONE }),
+                    );
+                }
+            }
+            if let [Some(r), Some(c)] = ids {
+                matching.push((r, c));
+            }
+        }
+        let mut parts = Vec::with_capacity(2);
+        let mut score = A::ZERO;
+        for (side, nodes) in nodes.into_iter().enumerate() {
+            let mut costs = vec![A::ZERO; nodes.len() / k];
+            for a in 0..k {
+                for b in a + 1..k {
+                    if masks[side] & (1 << a) == 0 || masks[side] & (1 << b) == 0 {
+                        continue;
+                    }
+                    let m = root.matrix(a, b);
+                    for (node, cost) in nodes.chunks_exact(k).zip(&mut costs) {
+                        if node[a] != NONE && node[b] != NONE {
+                            *cost = *cost + m.get(node[a] as usize, node[b] as usize);
+                        }
+                    }
+                }
+            }
+            for &cost in &costs {
+                score = score + cost;
+            }
+            parts.push(Part {
+                members: masks[side],
+                nodes: nodes.into(),
+                costs: costs.into(),
+            });
+        }
+        let (nr, nc) = (parts[0].costs.len(), parts[1].costs.len());
+        let mut data = vec![A::ZERO; nr * nc];
+        let mut scratch = Vec::new();
+        if nr != 0 && nc != 0 {
+            for a in 0..k {
+                if masks[0] & (1 << a) == 0 {
+                    continue;
+                }
+                for b in 0..k {
+                    if masks[1] & (1 << b) == 0 {
+                        continue;
+                    }
+                    // Orient each original matrix once; its rows are contiguous.
+                    let m: &[A] = if a < b {
+                        &root.matrices[index(k, a, b)].data
+                    } else {
+                        let src = &root.matrices[index(k, b, a)].data;
+                        transpose_into(&mut scratch, src, root.n_nodes(b), root.n_nodes(a));
+                        &scratch
+                    };
+                    let nb = root.n_nodes(b);
+                    for (dst, row) in data
+                        .chunks_exact_mut(nc)
+                        .zip(parts[0].nodes.chunks_exact(k))
+                    {
+                        if row[a] == NONE {
+                            continue;
+                        }
+                        let r = row[a] as usize;
+                        let src = &m[r * nb..(r + 1) * nb];
+                        for (out, col) in dst.iter_mut().zip(parts[1].nodes.chunks_exact(k)) {
+                            if col[b] != NONE {
+                                *out = *out + src[col[b] as usize];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // The largest original part has a vertex in every node: one side has N
+        // nodes and the current matching is maximum-cardinality. Rectangular LAP
+        // cannot worsen its optimum or change the final node count N.
+        Ok((
+            Self {
+                k_orig: k,
+                parts,
+                matrices: vec![Dense {
+                    data: data.into(),
+                    rows: nr,
+                    cols: nc,
+                }],
+                score,
+            },
+            matching,
+        ))
     }
 
     /// Induced edges between two original partites, sorted by the first vertex.

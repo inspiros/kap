@@ -1,6 +1,6 @@
 # Algorithms
 
-All six methods come from Gabrovšek et al. (2020) and build the solution by
+The six Am–Fm methods come from Gabrovšek et al. (2020) and build the solution by
 **merging partites**. Solving the linear assignment problem (LAP) between
 partites `i` and `j` and contracting each matched pair into one vertex gives
 the *quotient graph* `G / M_ij`, which has one partite fewer. The cost row of
@@ -28,6 +28,34 @@ The paper's experiments (k = 3, 4; n up to 100) rank solution quality as
 Fm ≈ Em ≈ Cm > Bm > Dm ≈ Am. It recommends Em overall (about 0.1 % above the
 optimum on benchmarks with known optima) and Cm among the deterministic
 methods.
+
+## Shift
+
+For each of the `k` cyclic orders of the partites, Shift constructs one Am
+solution and keeps the first best on score ties. This uses `k(k − 1)` LAPs. Under clique-sum
+costs, Shift is equivalent to Shift-ROM of Gutin, Goldengorin and Huang and
+of Karapetyan and Gutin.
+
+## Dimensionwise variation (DV)
+
+DV re-matching exactly re-solves the assignment between a chosen subset of
+partites and its complement. Each move is nonworsening; the two sides may
+have unequal sizes, so incomplete matches are supported. 1DV re-matches one
+partite against the remaining partites, cycling through them; each sweep uses
+`k` LAPs (`k = 2` needs one). sDV visits canonical subsets, choosing one of
+each subset/complement pair. It uses cyclic first improvement: apply an
+improving move immediately and continue the sweep. A full sweep considers
+`2^(k−1) − 1` subsets; sDV is limited to `k ≤ 16`. `max_iter` caps DV
+sweeps, and a complete cycle without an accepted move ends the search.
+
+`refine` can apply 1DV or sDV after the main `algo` finishes. Shift, 1DV and
+sDV as `algo` choices, and `refine`, require `backend="kap"` (the native core).
+
+References: H.-J. Bandelt, A. Maas and F. C. R. Spieksma, “Local search for
+multidimensional assignment problems with decomposable costs,” *European
+Journal of Operational Research* 158, 2004; Karapetyan and Gutin,
+“Efficient local search algorithms for known and new neighborhoods for the
+multidimensional assignment problem,” *Journal of Heuristics* 17, 2011.
 
 ## Cost
 

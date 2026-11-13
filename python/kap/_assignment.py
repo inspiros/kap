@@ -37,7 +37,59 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
                  maximize: bool = False,
                  return_free: bool = False,
                  backend: str = "kap",
-                 random_state: Optional[Union[np.random.RandomState, int]] = None) -> AssignmentResult:
+                 random_state: Optional[Union[np.random.RandomState, int]] = None,
+                 refine: Optional[str] = None) -> AssignmentResult:
+    r"""
+    Solve the k-Assignment Problem using merge heuristics and local search.
+    Gabrovšek's multiple Hungarian methods are described in ref. [1]_. This
+    calls the LAP solver multiple times. See :func:`linear_assignment` for details about the available backends.
+
+    Args:
+        cost_matrices (sequence of ndarray): List of pairwise cost matrices,
+            ordered as in ``itertools.combination(n, 2)``.
+        algo (str): "Am", "Bm", "Cm", "Dm", "Em", "Fm", "shift" (or "ShiftAm"),
+            "1dv" (or "dv1"), or "sdv" (or "dvs"), case-insensitive.
+            Shift keeps the best Am over cyclic part orders. 1DV and sDV start
+            from Am and re-match one part or a subset against the rest.
+            The new algorithms require backend="kap" (native core).
+            sDV supports at most 16 partites. Defaults to "Cm".
+        max_iter (int): Maximum number of moves for Cm, Em (per trial) and Fm.
+            For 1DV, sDV and refine this caps full sweeps; zero returns the start.
+            Negative values are treated as zero except for Em/Fm, which require
+            a positive limit. Ignored otherwise. Defaults to 100.
+        n_trials (int): Number of trials for Em.
+            This is ignored if other algorithm is used. Defaults to 1.
+        maximize (bool): Calculates a maximum weight matching if true.
+            Defaults to False.
+        return_free (bool): Return unmatched vertices if true.
+            Defaults to False.
+        backend (str): The backend used to solve the linear assignment problem.
+            Supported backends are "kap", "scipy", "lap", "lapjv", "munkres".
+            Defaults to "kap".
+        random_state (RandomState, Generator, int, optional): Controls the pseudo random
+            number generation for shuffling or choosing random partites pair in
+            Em and Fm algorithms. Pass an int for reproducible output across
+            multiple function calls. Defaults to None.
+        refine (str, optional): "1dv"/"dv1" or "sdv"/"dvs", case-insensitive.
+            Run dimensionwise variation after any selected algorithm. Moves
+            strictly improve cost, including with unequal part sizes. Requires
+            backend="kap" (native core). Defaults to None.
+
+    Returns:
+        matching_results: A namedtuple of ``matches``, ``matching_costs``,
+            and optionally ``free`` vertices if ``return_free`` is True.
+
+    References:
+        [1] Multiple Hungarian Method for k-Assignment Problem.
+            *Mathematics*, 8(11), 2050, November 2020, :doi:`10.3390/math8112050`
+    """
+    aliases = {"shift": "shift", "shiftam": "shift", "1dv": "1dv",
+               "dv1": "1dv", "sdv": "sdv", "dvs": "sdv"}
+    new_algo = aliases.get(algo.lower()) if isinstance(algo, str) else None
+    if refine is not None:
+        if not isinstance(refine, str) or refine.lower() not in ("1dv", "dv1", "sdv", "dvs"):
+            raise ValueError("refine must be 1DV | sDV")
+        refine = aliases[refine.lower()]
     native_k_assignment = None
     if isinstance(backend, str) and backend.lower() == "kap":
         try:
@@ -45,6 +97,8 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         except ImportError:
             pass
     if native_k_assignment is None:
+        if new_algo is not None or refine is not None:
+            raise ValueError('Shift, 1DV, sDV and refine need backend="kap" (native core)')
         return _reference.k_assignment(
             cost_matrices, algo=algo, max_iter=max_iter, n_trials=n_trials,
             maximize=maximize, return_free=return_free, backend=backend,
@@ -52,7 +106,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         )
 
     cost_matrices, _ = _validate_cost_matrices(cost_matrices)
-    algo = _validate_algo(algo)
+    algo = new_algo or _validate_algo(algo)
     _validate_search_options(algo, max_iter, n_trials)
     for matrix in cost_matrices:
         if matrix.dtype.kind not in "biuf":
@@ -68,16 +122,13 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
     matrices = [np.asarray(matrix, dtype=dtype) for matrix in cost_matrices]
     # Ignore options unused by the selected algorithm, as the reference does.
     iterations = 100
-    if algo == "c":
-        iterations = max(0, max_iter)
-    elif algo in ("e", "f"):
+    if algo in ("e", "f"):
         iterations = max_iter
+    elif algo in ("c", "1dv", "sdv") or refine is not None:
+        iterations = max(0, max_iter)
     trials = n_trials if algo == "e" else 1
     matches, matching_costs, free = native_k_assignment(
         matrices, algo, maximize=bool(maximize), max_iter=iterations,
-        n_trials=trials, seed=_seed(random_state),
+        n_trials=trials, seed=_seed(random_state), refine=refine,
     )
     return AssignmentResult(matches, matching_costs, free if return_free else None)
-
-
-k_assignment.__doc__ = _reference.k_assignment.__doc__

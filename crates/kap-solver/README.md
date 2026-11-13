@@ -18,5 +18,7 @@ assert_eq!(sol.cost, 5);
 # Ok::<(), kap::LapError>(())
 ```
 
-Status: early development. The linear assignment solver is in place; the
-k-assignment algorithms (Am–Fm) are being ported from the Python package.
+The crate provides the native linear assignment solver and k-assignment
+algorithms, including Am–Fm, Shift, 1DV and sDV. See the
+[algorithm documentation](../../docs/algorithms.md) for their strategies and
+references.

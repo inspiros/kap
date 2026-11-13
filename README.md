@@ -5,7 +5,7 @@
 This project implements **Boštjan Gabrovšek**'s Multiple Hungarian Methods for solving the **$k$-Assignment Problem**
 (or **$k$-Partite Graph Matching Problem**), described in [this paper](https://www.mdpi.com/2227-7390/8/11/2050).
 
-Since 0.3, all six algorithms and the Linear Assignment solver run in a native Rust core,
+Since 0.3, the algorithms and the Linear Assignment solver run in a native Rust core,
 usable from Python (``kap``) and from Rust (crate [``kap-solver``](crates/kap-solver)).
 
 ## Background
@@ -72,6 +72,9 @@ Full documentation is in [docs](docs/index.md).
   ([benchmarks](docs/benchmarks.md)). $\text{F}_m$ is the exception: it now always runs
   ``max_iter`` steps, so it is slower for $k \geq 4$ but finds lower-cost solutions.
   Other backends still run the pure Python implementation.
+- **Shift and dimensionwise variation search.** With ``backend="kap"``, ``algo`` accepts
+  ``"Shift"``, ``"1DV"`` and ``"sDV"``; ``refine`` can apply ``"1DV"`` or ``"sDV"`` after
+  the selected algorithm. See [Algorithms](docs/algorithms.md) for their strategies and limits.
 - **Algorithms follow the paper.** $\text{C}_m$ is pure steepest descent, $\text{E}_m$ runs independent
   random trials, and $\text{F}_m$ is a tabu search that may take sideways or worse moves and returns the
   best solution found. $\text{A}_m$, $\text{B}_m$ and $\text{D}_m$ give the same results as 0.2.3,
@@ -127,9 +130,10 @@ There are a few things to note about its parameters:
 - ``cost_matrices``: Sequence of $n (n - 1) / 2$ 2D cost matrices of pairwise matching costs between $n$ partites
   (might not be able to be represented as a 3D ``np.ndarray`` since partites can have different number of vertices)
   ordered as in ``itertools.combination(n, 2)``. For example, $[C_{01}, C_{02}, C_{03}, C_{12}, C_{13}, C_{23}]$.
-- ``algo``: This should be one of the six proposed algorithms, namely ``"Am", "Bm", "Cm", "Dm", "Em", "Fm"``.
+- ``algo``: Select ``"Am", "Bm", "Cm", "Dm", "Em", "Fm", "Shift", "1DV"`` or ``"sDV"``.
   $\text{C}_m$ is set to be the default as it usually performs as good as random approaches while having a
   deterministic behavior.
+- ``refine``: optionally select ``"1DV"`` or ``"sDV"`` to improve the result after ``algo``; requires ``backend="kap"``.
 - ``max_iter``, ``n_trials``, ``random_state``: control $\text{C}_m$, $\text{E}_m$ and $\text{F}_m$;
   pass an int (or a seeded ``RandomState``/``Generator``) to ``random_state`` for reproducible results.
 

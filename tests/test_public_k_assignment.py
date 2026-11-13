@@ -111,8 +111,13 @@ def test_return_free_false(paper_costs, algo):
 
 
 def test_signature_docstring_and_linear_assignment_unchanged():
-    assert inspect.signature(kap.k_assignment) == inspect.signature(_reference.k_assignment)
-    assert kap.k_assignment.__doc__ == _reference.k_assignment.__doc__
+    public = inspect.signature(kap.k_assignment)
+    reference = inspect.signature(_reference.k_assignment)
+    assert list(public.parameters.values())[:-1] == list(reference.parameters.values())
+    assert list(public.parameters)[-1] == "refine"
+    assert public.parameters["refine"].default is None
+    assert "1dv" in kap.k_assignment.__doc__
+    assert 'backend="kap"' in kap.k_assignment.__doc__
     assert kap.linear_assignment is _reference.linear_assignment
 
 

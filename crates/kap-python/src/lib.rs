@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use kap::{Algo, Cost, KSolution, LapError, LapSolver, MatrixView, Options, Sense};
+use kap::{Algo, Cost, Dv, KSolution, LapError, LapSolver, MatrixView, Options, Sense};
 use numpy::ndarray::ArrayView2;
 use numpy::{Element, PyArray1, PyReadonlyArray2};
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -177,7 +177,8 @@ where
 
 /// Solve a k-partite problem natively; return Python lists.
 #[pyfunction]
-#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0))]
+#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0, refine = None))]
+#[allow(clippy::too_many_arguments)]
 fn k_assignment<'py>(
     py: Python<'py>,
     cost_matrices: Vec<Bound<'py, PyAny>>,
@@ -186,6 +187,7 @@ fn k_assignment<'py>(
     max_iter: usize,
     n_trials: usize,
     seed: u64,
+    refine: Option<&str>,
 ) -> PyResult<Py<PyAny>> {
     let algo = match algo.to_ascii_lowercase().as_str() {
         "a" | "am" => Algo::Am,
@@ -194,12 +196,22 @@ fn k_assignment<'py>(
         "d" | "dm" => Algo::Dm,
         "e" | "em" => Algo::Em,
         "f" | "fm" => Algo::Fm,
+        "shift" | "shiftam" => Algo::Shift,
+        "1dv" | "dv1" => Algo::Dv1,
+        "sdv" | "dvs" => Algo::DvS,
         _ => {
             return Err(PyValueError::new_err(
-                "algo must be Am | Bm | Cm | Dm | Em | Fm",
+                "algo must be Am | Bm | Cm | Dm | Em | Fm | Shift | 1DV | sDV",
             ));
         }
     };
+    let refine = refine
+        .map(|name| match name.to_ascii_lowercase().as_str() {
+            "1dv" | "dv1" => Ok(Dv::One),
+            "sdv" | "dvs" => Ok(Dv::Subsets),
+            _ => Err(PyValueError::new_err("refine must be 1DV | sDV")),
+        })
+        .transpose()?;
     let sense = if maximize {
         Sense::Maximize
     } else {
@@ -210,6 +222,7 @@ fn k_assignment<'py>(
         max_iter,
         n_trials,
         seed,
+        refine,
     };
     if let Some(result) = try_k_dtype::<f64>(py, &cost_matrices, algo, &opts) {
         return Ok(result?.into_pyobject(py)?.unbind().into_any());
