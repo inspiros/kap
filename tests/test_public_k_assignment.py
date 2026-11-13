@@ -110,16 +110,19 @@ def test_return_free_false(paper_costs, algo):
     assert kap.k_assignment(paper_costs, algo=algo, random_state=42, max_iter=5).free is None
 
 
-def test_signature_docstring_and_linear_assignment_unchanged():
+def test_signature_docstring_and_linear_assignment_compatibility():
     public = inspect.signature(kap.k_assignment)
     reference = inspect.signature(_reference.k_assignment)
-    shared = list(public.parameters.values())[:-3]
+    extra = {"refine", "time_limit", "population"}
+    shared = [p for p in public.parameters.values() if p.name not in extra]
     assert [p.name for p in shared] == list(reference.parameters)
     assert [p.default for p in shared if p.name not in ("algo", "max_iter")] == \
         [p.default for p in reference.parameters.values() if p.name not in ("algo", "max_iter")]
     assert public.parameters["max_iter"].default is None
     assert public.parameters["algo"].default is None
-    assert list(public.parameters)[-3:] == ["refine", "time_limit", "population"]
+    assert list(public.parameters)[-4:] == ["refine", "time_limit", "population", "threshold"]
+    assert public.parameters["threshold"].default is None
+    assert public.parameters["threshold"].kind == inspect.Parameter.KEYWORD_ONLY
     assert public.parameters["population"].default is None
     assert public.parameters["time_limit"].default is None
     assert public.parameters["refine"].default is None

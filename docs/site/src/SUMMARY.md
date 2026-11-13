@@ -16,6 +16,7 @@
 - [Multiple Hungarian methods](multiple-hungarian.md)
 - [Dispatcher](dispatcher.md)
 - [Warm starts](warm-start.md)
+- [Optional matching](optional-matching.md)
 
 # Exact solving and bounds
 

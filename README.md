@@ -71,6 +71,7 @@ See the [documentation](https://inspiros.github.io/kap/) for inputs, Rust APIs, 
 - The default backend uses a Rust core. ILS is the default k-assignment method with this backend.
 - `ils`, `memetic`, `local_search`, and `multiple_hungarian` expose individual methods. Shift and dimensionwise variation are available in the native core.
 - `exact` uses SciPy and HiGHS; `lower_bound` bounds equal-size instances. `initial` supplies a complete warm start to ILS or local search.
+- `threshold=` enables optional matching in the native heuristics, with singleton vertices and forbidden pairs; returned costs remain in original units.
 - Native Cm, Em, and Fm follow the paper's search rules and can return different results from 0.2.3. Fm runs all `max_iter` steps.
 - The `lapsolver` backend was removed. Python 3.10 or newer is required.
 

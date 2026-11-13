@@ -10,7 +10,8 @@ The Python declarations show public defaults. The Rust declaration shows the ent
 
 ```python
 def multiple_hungarian(cost_matrices, method="Cm", *, max_iter=100, n_trials=1,
-                       maximize=False, return_free=False, backend="kap", random_state=None):
+                       maximize=False, return_free=False, backend="kap", random_state=None,
+                       threshold=None):
     ...
 ```
 
@@ -34,7 +35,8 @@ where
 | `method` | `algo` | `"Cm"` / explicit `Algo` | Am, Bm, Cm, Dm, Em, Fm, or Shift; Python names are case-insensitive. |
 | `max_iter` | `opts.max_iter` | `100` | Cm/Em/Fm move limit; positive for Em/Fm. Ignored by Am/Bm/Dm/Shift. |
 | `n_trials` | `opts.n_trials` | `1` | Positive independent Em trial count; ignored by other methods. |
-| `maximize` | `opts.sense` | `False` / `Sense::Minimize` | Maximize the original costs when true / `Sense::Maximize`. |
+| `maximize` | `opts.sense` | `False` / `Sense::Minimize` | Maximize the objective when true / `Sense::Maximize`; with a threshold, use the shifted objective. |
+| `threshold` | `opts.threshold` | `None` | Finite real pair-cost threshold; native core only. Optimizes sums of (cost − threshold), allowing singletons; costs remain in original units. See [optional matching](optional-matching.md). |
 | `return_free` | - | `False` | Include singleton vertices in Python `free`; Rust always returns them. |
 | `backend` | - | `"kap"` | LAP backend: kap, scipy, lap, lapjv, or munkres. Rust uses its native LAP solver. |
 | `random_state` | `opts.seed` | `None` / `0` | Python accepts a nonnegative integer, `RandomState`, or `Generator`; Rust uses `u64`. |
@@ -52,7 +54,7 @@ Rust returns `Result<KSolution<T::Acc>, KapError>`. `cliques` and `costs` corres
 | `ValueError` | `KapError::BadCount` | The matrix count does not describe 2 through 64 parts in the native core. |
 | `ValueError` | `KapError::ShapeMismatch` | Matrix dimensions disagree about a part's size. |
 | `TypeError` | Rejected by the `Cost` trait at compilation | A matrix has an unsupported element type. |
-| `OverflowError` | - | All Python matrices are integer or boolean and a `uint64` value exceeds `int64`. |
+| `OverflowError` | - | Python uses int64 arithmetic and a `uint64` value exceeds `int64`. |
 | `ValueError` | `KapError::TooManyVertices` | A native part exceeds `u32` vertex capacity. |
 | `ValueError` | `KapError::Lap` | A constituent LAP encounters an invalid numeric entry or an infeasible assignment. |
 
@@ -84,6 +86,8 @@ Python output:
 The Rust example prints the same cliques and costs, with the same free vertices.
 
 ## Notes and limits
+
+- `threshold=None` preserves unchanged behaviour. A fractional threshold promotes all-integer Python matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - Am uses k−1 LAPs, and Shift uses k(k−1). Dm chooses the cheapest immediate merge. Bm explores merge trees and memoizes commuting merges.
 - Native Bm uses 6, 39, 310, and 3,000 LAPs for k=3, 4, 5, and 6. Cm, Em, and Fm invoke Bm for neighbors, so their cost grows further.

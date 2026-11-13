@@ -10,7 +10,7 @@ The Python declarations show public defaults. The Rust declaration shows the ent
 
 ```python
 def local_search(cost_matrices, *, neighborhood="1dv", start=None, initial=None, max_sweeps=100,
-                 maximize=False, return_free=False):
+                 maximize=False, return_free=False, threshold=None):
     ...
 ```
 
@@ -33,9 +33,10 @@ where
 | `cost_matrices` | `mats` | Required | Pairwise matrices in [combinations order](input.md#matrix-order). |
 | `neighborhood` | `Algo::Dv1`, `Algo::DvS`, or `opts.refine` | `"1dv"` / explicit `Algo` | Select 1DV or sDV; Python accepts case-insensitive `dv1` / `dvs` aliases. |
 | `start` | `algo` before `opts.refine` | `None` (Am) / explicit `Algo` | Am, Bm, Dm, or Shift. Cannot combine with Python `initial`. |
-| `initial` | `cliques` in `k_assignment_from` | `None` / required by `k_assignment_from` | A complete solution of cliques; see [warm starts](warm-start.md). |
+| `initial` | `cliques` in `k_assignment_from` | `None` / required by `k_assignment_from` | A complete solution without a threshold; partial or empty solutions with one. See [warm starts](warm-start.md). |
 | `max_sweeps` | `opts.max_iter` | `100` | Nonnegative maximum number of DV sweeps. |
-| `maximize` | `opts.sense` | `False` / `Sense::Minimize` | Maximize the original costs when true / `Sense::Maximize`. |
+| `maximize` | `opts.sense` | `False` / `Sense::Minimize` | Maximize the objective when true / `Sense::Maximize`; with a threshold, use the shifted objective. |
+| `threshold` | `opts.threshold` | `None` | Finite real pair-cost threshold; native core only. Optimizes sums of (cost − threshold), allowing singletons; costs remain in original units. See [optional matching](optional-matching.md). |
 | `return_free` | - | `False` | Include singleton vertices in Python `free`; Rust always returns them. |
 
 ## Returns
@@ -51,11 +52,11 @@ Rust returns `Result<KSolution<T::Acc>, KapError>`. `cliques` and `costs` corres
 | `ValueError` | `KapError::BadCount` | The matrix count does not describe 2 through 64 parts in the native core. |
 | `ValueError` | `KapError::ShapeMismatch` | Matrix dimensions disagree about a part's size. |
 | `TypeError` | Rejected by the `Cost` trait at compilation | A matrix has an unsupported element type. |
-| `OverflowError` | - | All Python matrices are integer or boolean and a `uint64` value exceeds `int64`. |
+| `OverflowError` | - | Python uses int64 arithmetic and a `uint64` value exceeds `int64`. |
 | `ValueError` | `KapError::TooManyVertices` | A native part exceeds `u32` vertex capacity. |
 | `ValueError` | `KapError::Lap` | A constituent LAP encounters an invalid numeric entry or an infeasible assignment. |
 
-Python raises `RuntimeError` if the required native core is unavailable.
+Python raises `RuntimeError` if the required native core is unavailable without a threshold; with a threshold it raises `ValueError`.
 
 Python raises `ValueError` for invalid start or neighborhood names, `start` together with `initial`, or negative `max_sweeps`. Non-integer and boolean sweep limits raise `TypeError`. Rust returns `KapError::Unsupported` for sDV above 16 parts. Supplied starts can also produce the [warm-start errors](warm-start.md#errors).
 
@@ -83,6 +84,8 @@ Python output:
 The Rust example prints the same cliques and costs, with the same free vertices.
 
 ## Notes and limits
+
+- `threshold=None` preserves unchanged behaviour. A fractional threshold promotes all-integer Python matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - 1DV reassigns one part against its complement. Each sweep uses k LAPs, or one for k=2.
 - sDV visits one member of each subset/complement pair: 2^(k−1)−1 subsets per full sweep. It supports at most 16 parts.

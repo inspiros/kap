@@ -16,3 +16,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 `k_assignment` runs a selected heuristic; `k_assignment_from` accepts a complete starting solution. `lower_bound` bounds equal-size problems. `linear_sum_assignment` solves rectangular linear assignments. See the [documentation](https://inspiros.github.io/kap/) for inputs and limits.
+
+`Options::threshold` enables optional matching with singleton vertices and forbidden pairs; returned costs remain in original units.

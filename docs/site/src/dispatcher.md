@@ -14,7 +14,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike], algo: Optional[str] = Non
                  return_free: bool = False, backend: str = "kap",
                  random_state: Optional[Union[np.random.RandomState, int]] = None,
                  refine: Optional[str] = None, time_limit: Optional[float] = None,
-                 population: Optional[int] = None) -> AssignmentResult:
+                 population: Optional[int] = None, *, threshold=None) -> AssignmentResult:
     ...
 ```
 
@@ -38,7 +38,8 @@ where
 | `algo` | `algo` | `None` / required | Python: ILS with native kap, otherwise Cm. Rust always requires an `Algo`. |
 | `max_iter` | `opts.max_iter` | `None` / `100` | Moves, sweeps, perturbations per chain, or generations; Python resolves `None` by algorithm and time mode. |
 | `n_trials` | `opts.n_trials` | `1` | Em trials or ILS chains; positive for those methods. |
-| `maximize` | `opts.sense` | `False` / `Sense::Minimize` | Maximize the original costs when true / `Sense::Maximize`. |
+| `maximize` | `opts.sense` | `False` / `Sense::Minimize` | Maximize the objective when true / `Sense::Maximize`; with a threshold, use the shifted objective. |
+| `threshold` | `opts.threshold` | `None` | Finite real pair-cost threshold; native core only. Optimizes sums of (cost − threshold), allowing singletons; costs remain in original units. See [optional matching](optional-matching.md). |
 | `return_free` | - | `False` | Include singleton vertices in Python `free`; Rust always returns them. |
 | `backend` | - | `"kap"` | Native kap or optional scipy, lap, lapjv, munkres; newer methods require native kap. |
 | `random_state` | `opts.seed` | `None` / `0` | Python accepts a nonnegative integer, `RandomState`, or `Generator`; Rust uses `u64`. |
@@ -59,7 +60,7 @@ Rust returns `Result<KSolution<T::Acc>, KapError>`. `cliques` and `costs` corres
 | `ValueError` | `KapError::BadCount` | The matrix count does not describe 2 through 64 parts in the native core. |
 | `ValueError` | `KapError::ShapeMismatch` | Matrix dimensions disagree about a part's size. |
 | `TypeError` | Rejected by the `Cost` trait at compilation | A matrix has an unsupported element type. |
-| `OverflowError` | - | All Python matrices are integer or boolean and a `uint64` value exceeds `int64`. |
+| `OverflowError` | - | Python uses int64 arithmetic and a `uint64` value exceeds `int64`. |
 | `ValueError` | `KapError::TooManyVertices` | A native part exceeds `u32` vertex capacity. |
 | `ValueError` | `KapError::Lap` | A constituent LAP encounters an invalid numeric entry or an infeasible assignment. |
 
@@ -91,6 +92,8 @@ Python output:
 The Rust example prints the same cliques and costs, with the same free vertices.
 
 ## Notes and limits
+
+- `threshold=None` preserves unchanged behaviour. A fractional threshold promotes all-integer Python matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - Python accepts Am–Fm, Shift, 1DV, sDV, ILS, and memetic, case-insensitively. `initial` is available through `ils` and `local_search`, not this dispatcher.
 - Python defaults to 100 iterations, or an effectively unlimited count for timed ILS/memetic. Explicit iteration and time limits both apply; Rust always retains the supplied `max_iter`.

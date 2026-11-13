@@ -195,7 +195,7 @@ where
 
 /// Solve a k-partite problem natively; return Python lists.
 #[pyfunction]
-#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0, refine = None, time_limit = None, population = None, initial = None))]
+#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0, refine = None, time_limit = None, population = None, initial = None, threshold = None))]
 #[allow(clippy::too_many_arguments)]
 fn k_assignment<'py>(
     py: Python<'py>,
@@ -209,6 +209,7 @@ fn k_assignment<'py>(
     time_limit: Option<f64>,
     population: Option<usize>,
     initial: Option<&Bound<'py, PyAny>>,
+    threshold: Option<f64>,
 ) -> PyResult<Py<PyAny>> {
     let initial = initial
         .map(|value| {
@@ -267,7 +268,7 @@ fn k_assignment<'py>(
         .transpose()?;
     let opts = Options {
         sense,
-        threshold: None,
+        threshold,
         max_iter,
         n_trials,
         seed,

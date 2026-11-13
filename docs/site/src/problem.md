@@ -13,6 +13,8 @@ The objective is:
 
 Use maximization for weights instead of costs. Equal-size parts give full k-vertex cliques; unequal sizes can leave parts absent from a clique or produce free singleton vertices.
 
+With `threshold=tau`, [optional matching](optional-matching.md) instead optimizes the sum of (cost − tau) over pairs sharing a clique, over all partitions into cliques with at most one vertex per part, singletons allowed; returned costs stay in original units.
+
 See [input and results](input.md) for matrix order and the result representation.
 
 ## Reference

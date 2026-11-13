@@ -670,7 +670,8 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
                  maximize: bool = False,
                  return_free: bool = False,
                  backend: str = "kap",
-                 random_state: Optional[Union[np.random.RandomState, int]] = None) -> AssignmentResult:
+                 random_state: Optional[Union[np.random.RandomState, int]] = None,
+                 *, threshold=None) -> AssignmentResult:
     r"""
     Solve the k-Assignment Problem using Gabrovšek's multiple Hungarian methods,
     described in ref. [1]_. This function call the Linear Assignment Problem solver
@@ -697,6 +698,8 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
             Em and Fm algorithms. Pass an int for reproducible output across
             multiple function calls. Defaults to None.
 
+    threshold is unsupported here and raises ValueError unless it is None.
+
     Returns:
         matching_results: A namedtuple of ``matches``, ``matching_costs``,
             and optionally ``free`` vertices if ``return_free`` is True.
@@ -705,6 +708,8 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         [1] Multiple Hungarian Method for k-Assignment Problem.
             *Mathematics*, 8(11), 2050, November 2020, :doi:`10.3390/math8112050`
     """
+    if threshold is not None:
+        raise ValueError("threshold needs the native core")
     cost_matrices, n_partites = _validate_cost_matrices(cost_matrices)
     algo = _validate_algo(algo)
 

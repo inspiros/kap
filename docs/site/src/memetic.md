@@ -10,7 +10,8 @@ The Python declarations show public defaults. The Rust declaration shows the ent
 
 ```python
 def memetic(cost_matrices, *, generations=None, population=None, time_limit=None,
-            neighborhood="1dv", maximize=False, return_free=False, random_state=None):
+            neighborhood="1dv", maximize=False, return_free=False, random_state=None,
+            threshold=None):
     ...
 ```
 
@@ -35,7 +36,8 @@ where
 | `population` | `opts.population` | `None` | At least 2 if supplied; otherwise 12 without a time limit, or sized from measured local-search time with one. |
 | `time_limit` | `opts.time_limit` | `None` | Python: finite positive seconds. Rust: `Option<Duration>`. Both time and iteration limits apply. |
 | `neighborhood` | `opts.dv` | `"1dv"` / `Dv::One` | Use `"1dv"` or `"sdv"` / `Dv::Subsets`; aliases `"dv1"` and `"dvs"` are accepted in Python, case-insensitively. |
-| `maximize` | `opts.sense` | `False` / `Sense::Minimize` | Maximize the original costs when true / `Sense::Maximize`. |
+| `maximize` | `opts.sense` | `False` / `Sense::Minimize` | Maximize the objective when true / `Sense::Maximize`; with a threshold, use the shifted objective. |
+| `threshold` | `opts.threshold` | `None` | Finite real pair-cost threshold; native core only. Optimizes sums of (cost − threshold), allowing singletons; costs remain in original units. See [optional matching](optional-matching.md). |
 | `return_free` | - | `False` | Include singleton vertices in Python `free`; Rust always returns them. |
 | `random_state` | `opts.seed` | `None` / `0` | Python accepts a nonnegative integer, `RandomState`, or `Generator`; Rust uses `u64`. |
 | - | `opts.refine` | `None` | Optional DV pass after the search; separate from the internal `opts.dv`. |
@@ -53,11 +55,11 @@ Rust returns `Result<KSolution<T::Acc>, KapError>`. `cliques` and `costs` corres
 | `ValueError` | `KapError::BadCount` | The matrix count does not describe 2 through 64 parts in the native core. |
 | `ValueError` | `KapError::ShapeMismatch` | Matrix dimensions disagree about a part's size. |
 | `TypeError` | Rejected by the `Cost` trait at compilation | A matrix has an unsupported element type. |
-| `OverflowError` | - | All Python matrices are integer or boolean and a `uint64` value exceeds `int64`. |
+| `OverflowError` | - | Python uses int64 arithmetic and a `uint64` value exceeds `int64`. |
 | `ValueError` | `KapError::TooManyVertices` | A native part exceeds `u32` vertex capacity. |
 | `ValueError` | `KapError::Lap` | A constituent LAP encounters an invalid numeric entry or an infeasible assignment. |
 
-Python raises `RuntimeError` if the required native core is unavailable.
+Python raises `RuntimeError` if the required native core is unavailable without a threshold; with a threshold it raises `ValueError`.
 
 Python raises `ValueError` for a negative integer seed and `TypeError` for an unsupported seed object.
 
@@ -87,6 +89,8 @@ Python output:
 The Rust example prints the same cliques and costs, with the same free vertices.
 
 ## Notes and limits
+
+- `threshold=None` preserves unchanged behaviour. A fractional threshold promotes all-integer Python matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - Select `Algo::Memetic` in Rust. `opts.n_trials` is ignored. Warm starts are not supported.
 - The deadline counts from entry. An in-progress batch or generation finishes after it. Rust still applies its default 100-generation limit unless changed.

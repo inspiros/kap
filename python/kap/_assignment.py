@@ -1,6 +1,7 @@
 """Public k-assignment dispatch to the native core or the Python reference."""
 
 import sys
+from numbers import Real
 from typing import Optional, Sequence, Union
 
 import numpy as np
@@ -68,7 +69,23 @@ def _budget(value, time_limit, name):
     return (sys.maxsize if time_limit is not None else 100) if value is None else _integer(value, name, 0)
 
 
-def _initial_cliques(initial, sizes):
+def _threshold(value):
+    if value is None:
+        return None
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real):
+        raise TypeError("threshold must be a finite real number")
+    try:
+        converted = float(value)
+    except OverflowError:
+        raise ValueError("threshold must be a finite real number") from None
+    if not np.isfinite(converted):
+        raise ValueError("threshold must be a finite real number")
+    if value == int(value) and int(converted) != int(value):
+        raise ValueError("threshold must be exactly representable as float64")
+    return converted
+
+
+def _initial_cliques(initial, sizes, *, complete=True):
     if isinstance(initial, AssignmentResult):
         initial = initial.matches
     try:
@@ -105,17 +122,19 @@ def _initial_cliques(initial, sizes):
         result.append(row)
     expected = max(sizes)
     actual = len(result) + sum(sizes) - len(used)
-    if actual != expected:
+    if complete and actual != expected:
         raise ValueError(f"initial must be a complete solution: {expected} nodes expected, {actual} given")
     return result
 
 
-def _promote_cost_matrices(cost_matrices):
+def _promote_cost_matrices(cost_matrices, *, threshold=None):
     """Promote validated matrices to the native core's common numeric dtype."""
     for matrix in cost_matrices:
         if matrix.dtype.kind not in "biuf":
             raise TypeError(f"unsupported cost matrix dtype {matrix.dtype}")
     dtype = np.int64 if all(m.dtype.kind in "biu" for m in cost_matrices) else np.float64
+    if threshold is not None and threshold != int(threshold):
+        dtype = np.float64
     if dtype is np.int64:
         for matrix in cost_matrices:
             if (matrix.dtype.kind == "u" and matrix.dtype.itemsize == 8
@@ -128,23 +147,27 @@ def _promote_cost_matrices(cost_matrices):
 
 def _native(cost_matrices, algo, *, max_iter=100, n_trials=1, maximize=False,
             return_free=False, random_state=None, refine=None, time_limit=None, population=None,
-            initial=None):
+            initial=None, threshold=None):
+    native_threshold = _threshold(threshold)
     native = _core()
+    if native is None and threshold is not None:
+        raise ValueError("threshold needs the native core")
     if native is None:
         raise RuntimeError("the native core is required")
     cost_matrices, n_partites = _validate_cost_matrices(cost_matrices)
     if initial is not None:
         sizes = [cost_matrices[0].shape[0]] + [m.shape[1] for m in cost_matrices[:n_partites - 1]]
-        initial = _initial_cliques(initial, sizes)
-    matrices = _promote_cost_matrices(cost_matrices)
+        initial = _initial_cliques(initial, sizes, complete=threshold is None)
+    matrices = _promote_cost_matrices(cost_matrices, threshold=threshold)
     matches, costs, free = native(matrices, algo, maximize=bool(maximize), max_iter=max_iter,
                                   n_trials=n_trials, seed=_seed(random_state), refine=refine,
-                                  time_limit=time_limit, population=population, initial=initial)
+                                  time_limit=time_limit, population=population, initial=initial,
+                                  threshold=native_threshold)
     return AssignmentResult(matches, costs, free if return_free else None)
 
 
 def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborhood="1dv",
-        maximize=False, return_free=False, random_state=None, initial=None):
+        maximize=False, return_free=False, random_state=None, initial=None, threshold=None):
     """Run iterated local search, perturbing and reoptimizing independent chains.
 
     The best solution found is returned. The native core is required.
@@ -155,16 +178,34 @@ def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborho
         n_chains: Positive number of independent chains.
         time_limit: Finite positive seconds; applies alongside max_iter when both are set.
         neighborhood: "1dv" or "sdv" (also "dv1" or "dvs"), case-insensitive.
+        threshold: Optional finite pair-cost threshold; see the objective below.
         maximize: Maximize the score instead of minimizing it.
         return_free: Include unmatched vertices in the result.
         random_state: None, integer, RandomState or Generator; use an integer for reproducibility.
         initial: Iterable of cliques of (part, vertex) pairs, or an AssignmentResult
-            whose matches are used, replacing the Am start. Must be a complete
-            solution such as a previous result: after unlisted vertices are added
+            whose matches are used, replacing the Am start. Without a threshold,
+            must be a complete solution such as a previous result: after unlisted vertices are added
             as singletons, there must be exactly max(part sizes) nodes.
+            With a threshold, partial and empty solutions are accepted; forbidden
+            pairs in the same clique are rejected. Improvement then refers to
+            the shifted objective.
             DV refines this start before all chains.
             The result is never worse than the start for integer costs; for float
             costs this holds up to floating-point rounding of the cost sums.
+
+    With threshold=tau, the objective is the sum of (cost - tau) over all
+    pairs sharing a clique, over all partitions into cliques with at most one
+    vertex per part, singletons allowed; minimised (maximised with maximize=True).
+    A clique forms only if it improves that objective, so vertices can stay
+    unmatched. This is a soft gate: a pair costlier than tau can share a clique
+    when the clique's other pairs pay for it. A float cost of +inf (minimise)
+    or -inf (maximise) forbids a pair. To forbid every pair above a limit, set
+    those entries to inf before calling (use -inf for maximisation).
+    Returned costs are in original units, not shifted. threshold=None leaves the
+    behaviour unchanged. A fractional threshold promotes all-integer matrices
+    to float64 for that call; integral thresholds keep exact int64 arithmetic.
+    Thresholds require the native core and must be finite real numbers, excluding
+    bool. Integral thresholds must be exactly representable as float64.
 
     Returns:
         AssignmentResult: Matches, their costs, and optionally free vertices.
@@ -175,11 +216,13 @@ def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborho
     chains = _integer(n_chains, "n_chains", 1)
     return _native(cost_matrices, "ils", max_iter=iterations, n_trials=chains,
                    time_limit=time_limit, refine=_neighborhood(neighborhood), maximize=maximize,
-                   return_free=return_free, random_state=random_state, initial=initial)
+                   return_free=return_free, random_state=random_state, initial=initial,
+                   threshold=threshold)
 
 
 def memetic(cost_matrices, *, generations=None, population=None, time_limit=None,
-            neighborhood="1dv", maximize=False, return_free=False, random_state=None):
+            neighborhood="1dv", maximize=False, return_free=False, random_state=None,
+            threshold=None):
     """Evolve a population of locally optimized solutions using mutation and crossover.
 
     Each candidate is refined with dimensionwise variation. The native core is required.
@@ -190,9 +233,24 @@ def memetic(cost_matrices, *, generations=None, population=None, time_limit=None
         population: Population size, an integer >= 2, or None for the native default.
         time_limit: Finite positive seconds; applies alongside generations when both are set.
         neighborhood: "1dv" or "sdv" (also "dv1" or "dvs"), case-insensitive.
+        threshold: Optional finite pair-cost threshold; see the objective below.
         maximize: Maximize the score instead of minimizing it.
         return_free: Include unmatched vertices in the result.
         random_state: None, integer, RandomState or Generator; use an integer for reproducibility.
+
+    With threshold=tau, the objective is the sum of (cost - tau) over all
+    pairs sharing a clique, over all partitions into cliques with at most one
+    vertex per part, singletons allowed; minimised (maximised with maximize=True).
+    A clique forms only if it improves that objective, so vertices can stay
+    unmatched. This is a soft gate: a pair costlier than tau can share a clique
+    when the clique's other pairs pay for it. A float cost of +inf (minimise)
+    or -inf (maximise) forbids a pair. To forbid every pair above a limit, set
+    those entries to inf before calling (use -inf for maximisation).
+    Returned costs are in original units, not shifted. threshold=None leaves the
+    behaviour unchanged. A fractional threshold promotes all-integer matrices
+    to float64 for that call; integral thresholds keep exact int64 arithmetic.
+    Thresholds require the native core and must be finite real numbers, excluding
+    bool. Integral thresholds must be exactly representable as float64.
 
     Returns:
         AssignmentResult: Matches, their costs, and optionally free vertices.
@@ -206,11 +264,11 @@ def memetic(cost_matrices, *, generations=None, population=None, time_limit=None
         population = int(population)
     return _native(cost_matrices, "memetic", max_iter=iterations, population=population,
                    time_limit=time_limit, refine=_neighborhood(neighborhood), maximize=maximize,
-                   return_free=return_free, random_state=random_state)
+                   return_free=return_free, random_state=random_state, threshold=threshold)
 
 
 def local_search(cost_matrices, *, neighborhood="1dv", start=None, initial=None, max_sweeps=100,
-                 maximize=False, return_free=False):
+                 maximize=False, return_free=False, threshold=None):
     """Build a deterministic starting solution and improve it with DV sweeps.
 
     Search ends at a local optimum or the sweep limit. The native core is required.
@@ -221,14 +279,32 @@ def local_search(cost_matrices, *, neighborhood="1dv", start=None, initial=None,
         start: Starting method "Am", "Bm", "Dm", or "Shift", case-insensitive;
             None selects Am. Cannot be supplied together with initial.
         initial: Iterable of cliques of (part, vertex) pairs, or an AssignmentResult
-            whose matches are used, replacing the constructed start. Must be a complete
-            solution such as a previous result: after unlisted vertices are added
+            whose matches are used, replacing the constructed start. Without a threshold,
+            must be a complete solution such as a previous result: after unlisted vertices are added
             as singletons, there must be exactly max(part sizes) nodes.
+            With a threshold, partial and empty solutions are accepted; forbidden
+            pairs in the same clique are rejected. Improvement then refers to
+            the shifted objective.
             The result is never worse than the start for integer costs; for float
             costs this holds up to floating-point rounding of the cost sums.
         max_sweeps: Nonnegative maximum number of sweeps.
+        threshold: Optional finite pair-cost threshold; see the objective below.
         maximize: Maximize the score instead of minimizing it.
         return_free: Include unmatched vertices in the result.
+
+    With threshold=tau, the objective is the sum of (cost - tau) over all
+    pairs sharing a clique, over all partitions into cliques with at most one
+    vertex per part, singletons allowed; minimised (maximised with maximize=True).
+    A clique forms only if it improves that objective, so vertices can stay
+    unmatched. This is a soft gate: a pair costlier than tau can share a clique
+    when the clique's other pairs pay for it. A float cost of +inf (minimise)
+    or -inf (maximise) forbids a pair. To forbid every pair above a limit, set
+    those entries to inf before calling (use -inf for maximisation).
+    Returned costs are in original units, not shifted. threshold=None leaves the
+    behaviour unchanged. A fractional threshold promotes all-integer matrices
+    to float64 for that call; integral thresholds keep exact int64 arithmetic.
+    Thresholds require the native core and must be finite real numbers, excluding
+    bool. Integral thresholds must be exactly representable as float64.
 
     Returns:
         AssignmentResult: Matches, their costs, and optionally free vertices.
@@ -244,11 +320,12 @@ def local_search(cost_matrices, *, neighborhood="1dv", start=None, initial=None,
         raise ValueError("start must be Am | Bm | Dm | Shift")
     return _native(cost_matrices, starts[start.lower()], max_iter=_integer(max_sweeps, "max_sweeps", 0),
                    refine=_neighborhood(neighborhood), maximize=maximize, return_free=return_free,
-                   initial=initial)
+                   initial=initial, threshold=threshold)
 
 
 def multiple_hungarian(cost_matrices, method="Cm", *, max_iter=100, n_trials=1,
-                       maximize=False, return_free=False, backend="kap", random_state=None):
+                       maximize=False, return_free=False, backend="kap", random_state=None,
+                       threshold=None):
     """Solve using a multiple Hungarian method from the paper, or cyclic Shift.
 
     Am–Fm use the selected LAP backend and fall back to the Python reference when
@@ -259,10 +336,25 @@ def multiple_hungarian(cost_matrices, method="Cm", *, max_iter=100, n_trials=1,
         method: "Am" through "Fm", or "Shift", case-insensitive.
         max_iter: Move limit for Cm, Em and Fm; ignored for other methods.
         n_trials: Number of independent Em trials.
+        threshold: Optional finite pair-cost threshold; see the objective below.
         maximize: Maximize the score instead of minimizing it.
         return_free: Include unmatched vertices in the result.
         backend: LAP backend: "kap", "scipy", "lap", "lapjv", or "munkres".
         random_state: None, integer, RandomState or Generator; use an integer for reproducible Em/Fm results.
+
+    With threshold=tau, the objective is the sum of (cost - tau) over all
+    pairs sharing a clique, over all partitions into cliques with at most one
+    vertex per part, singletons allowed; minimised (maximised with maximize=True).
+    A clique forms only if it improves that objective, so vertices can stay
+    unmatched. This is a soft gate: a pair costlier than tau can share a clique
+    when the clique's other pairs pay for it. A float cost of +inf (minimise)
+    or -inf (maximise) forbids a pair. To forbid every pair above a limit, set
+    those entries to inf before calling (use -inf for maximisation).
+    Returned costs are in original units, not shifted. threshold=None leaves the
+    behaviour unchanged. A fractional threshold promotes all-integer matrices
+    to float64 for that call; integral thresholds keep exact int64 arithmetic.
+    Thresholds require the native core and must be finite real numbers, excluding
+    bool. Integral thresholds must be exactly representable as float64.
 
     Returns:
         AssignmentResult: Matches, their costs, and optionally free vertices.
@@ -276,6 +368,8 @@ def multiple_hungarian(cost_matrices, method="Cm", *, max_iter=100, n_trials=1,
     else:
         algo = "shift"
     native = isinstance(backend, str) and backend.lower() == "kap" and _core() is not None
+    if threshold is not None and not native:
+        raise ValueError("threshold needs the native core")
     if not native:
         if shift:
             raise ValueError('Shift needs backend="kap" (native core)')
@@ -285,7 +379,7 @@ def multiple_hungarian(cost_matrices, method="Cm", *, max_iter=100, n_trials=1,
     _validate_search_options(algo, max_iter, n_trials)
     iterations = max_iter if algo in ("e", "f") else max(0, max_iter) if algo == "c" else 100
     return _native(cost_matrices, algo, max_iter=iterations, n_trials=n_trials if algo == "e" else 1,
-                   maximize=maximize, return_free=return_free, random_state=random_state)
+                   maximize=maximize, return_free=return_free, random_state=random_state, threshold=threshold)
 
 
 def k_assignment(cost_matrices: Sequence[Array2DLike], algo: Optional[str] = None,
@@ -293,7 +387,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike], algo: Optional[str] = Non
                  return_free: bool = False, backend: str = "kap",
                  random_state: Optional[Union[np.random.RandomState, int]] = None,
                  refine: Optional[str] = None, time_limit: Optional[float] = None,
-                 population: Optional[int] = None) -> AssignmentResult:
+                 population: Optional[int] = None, *, threshold=None) -> AssignmentResult:
     """Dispatch a k-assignment problem to a search or multiple Hungarian method.
 
     Args:
@@ -304,6 +398,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike], algo: Optional[str] = Non
             Explicit limits also apply with time_limit. Negative limits are treated
             as zero except for Em and Fm, which require positive limits.
         n_trials: Independent Em trials or ILS chains.
+        threshold: Optional finite pair-cost threshold; see the objective below.
         maximize: Maximize total weight instead of minimizing it.
         return_free: Include unmatched vertices.
         backend: LAP backend; newer methods and refinement require backend="kap".
@@ -312,10 +407,26 @@ def k_assignment(cost_matrices: Sequence[Array2DLike], algo: Optional[str] = Non
         time_limit: Finite positive seconds for ILS or memetic; results depend on machine speed.
         population: Memetic population size, at least 2, or None for the native default.
 
+    With threshold=tau, the objective is the sum of (cost - tau) over all
+    pairs sharing a clique, over all partitions into cliques with at most one
+    vertex per part, singletons allowed; minimised (maximised with maximize=True).
+    A clique forms only if it improves that objective, so vertices can stay
+    unmatched. This is a soft gate: a pair costlier than tau can share a clique
+    when the clique's other pairs pay for it. A float cost of +inf (minimise)
+    or -inf (maximise) forbids a pair. To forbid every pair above a limit, set
+    those entries to inf before calling (use -inf for maximisation).
+    Returned costs are in original units, not shifted. threshold=None leaves the
+    behaviour unchanged. A fractional threshold promotes all-integer matrices
+    to float64 for that call; integral thresholds keep exact int64 arithmetic.
+    Thresholds require the native core and must be finite real numbers, excluding
+    bool. Integral thresholds must be exactly representable as float64.
+
     Returns:
         AssignmentResult: Matches, their costs, and optionally free vertices.
     """
     native = isinstance(backend, str) and backend.lower() == "kap" and _core() is not None
+    if threshold is not None and not native:
+        raise ValueError("threshold needs the native core")
     if algo is None:
         algo = "ils" if native else "Cm"
     new_algo = _ALIASES.get(algo.lower()) if isinstance(algo, str) else None
@@ -327,7 +438,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike], algo: Optional[str] = Non
         refine = _neighborhood(refine, "refine")
     if not native and (new_algo is not None or refine is not None or time_limit is not None):
         raise ValueError('Shift, 1DV, sDV, ILS, memetic, refine and time_limit need backend="kap" (native core)')
-    common = dict(maximize=maximize, return_free=return_free)
+    common = dict(maximize=maximize, return_free=return_free, threshold=threshold)
     if new_algo in ("ils", "memetic", "1dv", "sdv"):
         # Preserve the dispatcher's historical treatment of negative limits.
         limit = None if max_iter is None else max(0, max_iter)

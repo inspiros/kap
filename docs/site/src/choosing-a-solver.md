@@ -13,6 +13,7 @@ Use [linear assignment](lap.md) for a two-part problem.
 | Refine a complete solution | `local_search` / DV | Apply deterministic 1DV or sDV sweeps, with a constructed start or a supplied complete solution. |
 | Population search | `memetic` / `Algo::Memetic` | Compare mutation and crossover with ILS on your instances; measured multi-chain ILS costs were lower or equal at 60 s. |
 | Choose a method by name | `k_assignment` | Retain a common Python dispatcher or select an explicit Rust `Algo`. |
+| Allow vertices to stay unmatched | `threshold=` / `Options::threshold` | Use [optional matching](optional-matching.md) with the native heuristics; forbidden infinities exclude individual pairs. |
 | Prove an optimum | `exact` (Python only) | Use small equal-size inputs, with about 10⁵ tuple variables as a practical limit. |
 | Bound the remaining improvement | `lower_bound` | Measured k=3 and metric-cost gaps were small; random costs at k≥4 gave looser bounds. |
 | Solve a two-part LAP | `linear_sum_assignment` | Compute an optimal rectangular linear assignment. |
