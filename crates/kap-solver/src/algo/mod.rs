@@ -62,8 +62,9 @@ pub struct Options {
     pub sense: Sense,
     /// Optional pair-cost threshold. Optimize sums of `d - threshold` over
     /// transversal partial cliques, with singletons allowed. `+inf` forbids a
-    /// pair when minimizing, `-inf` when maximizing. Supports Am through Fm and Shift, without DV
-    /// refinement or an initial solution; None preserves complete matching.
+    /// pair when minimizing, `-inf` when maximizing. All algorithms, DV
+    /// refinement and supported initial solutions accept a threshold;
+    /// None preserves complete matching.
     pub threshold: Option<f64>,
     /// Move limit of Cm, Em (per trial) and Fm; DV sweeps; ILS perturbations; memetic generations.
     pub max_iter: usize,
@@ -126,10 +127,13 @@ where
 /// part. Unlisted vertices become singleton nodes. Supports deterministic
 /// starts (Am, Bm, Dm, Shift, Dv1, DvS) and ILS; other algorithms reject
 /// `initial`. Deterministic starts are replaced, then `opts.refine` is applied.
-/// The initial solution must be complete: after adding singleton nodes its
-/// node count must equal `max(part sizes)`, as in a previous solver result.
+/// Without a threshold the initial solution must be complete: after adding
+/// singleton nodes its node count must equal `max(part sizes)`, as in a previous
+/// solver result. With a threshold, partial solutions (including an empty
+/// clique list) are accepted, but a clique containing a forbidden pair is rejected.
 /// The result is no worse than the start for integer costs; for floating-point
-/// costs this holds up to rounding of the cost sums.
+/// costs this holds up to rounding of the cost sums. With a threshold,
+/// "no worse than the start" refers to the shifted objective.
 pub fn k_assignment_from<T: Cost>(
     mats: &[MatrixView<'_, T>],
     cliques: &[Vec<(usize, usize)>],
@@ -199,12 +203,14 @@ fn from_cliques<A: Acc + Cost<Acc = A>>(
     }
     let expected = (0..k).map(|p| root.n_nodes(p)).max().unwrap();
     let actual = nodes.len() / k;
-    if actual != expected {
+    if !root.is_gated() && actual != expected {
         return Err(KapError::IncompleteInitial { expected, actual });
     }
-    // Every vertex of a largest part occurs exactly once across N nodes, so
-    // each node has a largest-part vertex. This preserves DV/ILS's invariant.
-    Quotient::from_nodes_checked(root, nodes)
+    let start = Quotient::from_nodes_checked(root, nodes)?;
+    if root.is_gated() && !start.score.is_finite() {
+        return Err(KapError::ForbiddenInitial);
+    }
+    Ok(start)
 }
 
 fn run<T: Cost>(
@@ -217,15 +223,6 @@ where
     T::Acc: Cost<Acc = T::Acc>,
 {
     let original = KPartite::new(mats)?;
-    if opts.threshold.is_some()
-        && (initial.is_some()
-            || opts.refine.is_some()
-            || matches!(algo, Algo::Dv1 | Algo::DvS | Algo::Ils | Algo::Memetic))
-    {
-        return Err(KapError::Unsupported(
-            "threshold is not yet supported with this algorithm or option",
-        ));
-    }
     let problem = match opts.threshold {
         Some(tau) => original.gated(tau, opts.sense)?,
         None => original.clone(),
@@ -294,6 +291,16 @@ where
         original.recost(&mut solution);
     }
     Ok(solution)
+}
+
+/// Column permutations can leave empty rows when no part is an anchor.
+fn drop_empty_rows(nodes: Vec<u32>, k: usize) -> Vec<u32> {
+    nodes
+        .chunks_exact(k)
+        .filter(|row| row.iter().any(|&v| v != crate::kpartite::NONE))
+        .flatten()
+        .copied()
+        .collect()
 }
 
 /// SplitMix64; one independent stream per (seed, stream).

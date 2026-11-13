@@ -2,7 +2,7 @@
 
 use std::{cmp::Ordering, collections::HashSet, time::Instant};
 
-use super::{Options, Rng, better, dv, merge::shift};
+use super::{Options, Rng, better, drop_empty_rows, dv, merge::shift};
 use crate::{Acc, Cost, KapError, LapSolver, Quotient, Sense, kpartite::NONE};
 
 const MU_F: f64 = 0.2;
@@ -30,6 +30,37 @@ pub(crate) fn perturb(nodes: &[u32], k: usize, anchor: usize, mu: f64, rng: &mut
         nodes.swap(i * k + part, j * k + part);
     }
     nodes
+}
+
+/// Gated tables have no anchor: every column is eligible, and N may shrink.
+pub(super) fn perturb_gated(nodes: &[u32], k: usize, mu: f64, rng: &mut Rng) -> Vec<u32> {
+    let mut nodes = nodes.to_vec();
+    let n = nodes.len() / k;
+    if n < 2 {
+        return nodes;
+    }
+    for _ in 0..(n as f64 * mu / 2.0).ceil() as usize {
+        let i = rng.below(n);
+        let j = rng.below(n - 1);
+        let j = if j >= i { j + 1 } else { j };
+        let part = rng.below(k);
+        nodes.swap(i * k + part, j * k + part);
+    }
+    drop_empty_rows(nodes, k)
+}
+
+fn perturb_member<A: Acc + Cost<Acc = A>>(
+    root: &Quotient<A>,
+    member: &Quotient<A>,
+    anchor: usize,
+    mu: f64,
+    rng: &mut Rng,
+) -> Vec<u32> {
+    if root.is_gated() {
+        perturb_gated(member.nodes(), root.n_parts(), mu, rng)
+    } else {
+        perturb(member.nodes(), root.n_parts(), anchor, mu, rng)
+    }
 }
 
 fn repair(nodes: &mut [u32], sizes: &[usize], common: usize, rng: &mut Rng) {
@@ -117,6 +148,74 @@ pub(crate) fn crossover(
     (child1, child2)
 }
 
+/// Remove repeated vertices without introducing any new within-row pairs.
+/// Missing vertices get their own singleton rows, preserving pair provenance.
+fn repair_gated(nodes: &mut Vec<u32>, sizes: &[usize]) {
+    let k = sizes.len();
+    for (part, &size) in sizes.iter().enumerate() {
+        let mut used = vec![false; size];
+        for row in nodes.chunks_exact_mut(k) {
+            let v = row[part];
+            if v != NONE && std::mem::replace(&mut used[v as usize], true) {
+                row[part] = NONE;
+            }
+        }
+        for (v, &seen) in used.iter().enumerate() {
+            if !seen {
+                let offset = nodes.len();
+                nodes.resize(offset + k, NONE);
+                nodes[offset + part] = v as u32;
+            }
+        }
+    }
+    *nodes = drop_empty_rows(std::mem::take(nodes), k);
+}
+
+pub(super) fn crossover_gated(
+    x: &[u32],
+    y: &[u32],
+    sizes: &[usize],
+    rng: &mut Rng,
+) -> (Vec<u32>, Vec<u32>) {
+    if x == y {
+        return (x.to_vec(), y.to_vec());
+    }
+    let k = sizes.len();
+    let y_rows: HashSet<_> = y.chunks_exact(k).collect();
+    let common: HashSet<_> = x
+        .chunks_exact(k)
+        .filter(|row| y_rows.contains(row))
+        .collect();
+    let mut child1 = Vec::new();
+    for row in x.chunks_exact(k).filter(|row| common.contains(row)) {
+        child1.extend_from_slice(row);
+    }
+    let mut child2 = child1.clone();
+    let mut rest_x: Vec<_> = x
+        .chunks_exact(k)
+        .filter(|row| !common.contains(row))
+        .collect();
+    let mut rest_y: Vec<_> = y
+        .chunks_exact(k)
+        .filter(|row| !common.contains(row))
+        .collect();
+    rng.shuffle(&mut rest_x);
+    rng.shuffle(&mut rest_y);
+    let paired = rest_x.len().min(rest_y.len());
+    for (&x, &y) in rest_x.iter().zip(&rest_y) {
+        let (x, y) = if rng.uniform() < KEEP { (x, y) } else { (y, x) };
+        child1.extend_from_slice(x);
+        child2.extend_from_slice(y);
+    }
+    for row in rest_x[paired..].iter().chain(&rest_y[paired..]) {
+        child1.extend_from_slice(row);
+        child2.extend_from_slice(row);
+    }
+    repair_gated(&mut child1, sizes);
+    repair_gated(&mut child2, sizes);
+    (child1, child2)
+}
+
 enum Candidate<A> {
     Keep(Quotient<A>),
     Search(Vec<u32>),
@@ -141,21 +240,24 @@ fn improve<A: Acc + Cost<Acc = A>>(
         ),
     };
     #[cfg(feature = "rayon")]
-    {
+    let results: Result<Vec<_>, KapError> = {
         use rayon::prelude::*;
         let _ = solver;
         candidates
             .par_iter()
             .map_init(LapSolver::new, |s, q| run(q, s))
             .collect()
-    }
+    };
     #[cfg(not(feature = "rayon"))]
-    {
-        candidates.iter().map(|q| run(q, solver)).collect()
-    }
+    let results: Result<Vec<_>, KapError> = candidates.iter().map(|q| run(q, solver)).collect();
+    Ok(results?
+        .into_iter()
+        .filter(|q| q.score.is_finite())
+        .collect())
 }
 
 fn select<A: Acc + Cost<Acc = A>>(population: &mut Vec<Quotient<A>>, m: usize, sense: Sense) {
+    population.retain(|q| q.score.is_finite());
     population.sort_by(|x, y| {
         if better(x.score, y.score, sense) {
             Ordering::Less
@@ -195,8 +297,8 @@ pub(crate) fn memetic<A: Acc + Cost<Acc = A>>(
             anchor = part;
         }
     }
-    // The first largest original part has a vertex in every node. Keeping it
-    // fixed during perturbation ensures no node becomes empty and N is preserved.
+    // Without gating, keeping the first largest part fixed preserves N.
+    // Gated perturbations have no anchor and remove any empty rows.
     let mut rng = Rng::new(opts.seed, 0);
     let mut population = vec![start.clone()];
     let mut produced = 1;
@@ -224,7 +326,7 @@ pub(crate) fn memetic<A: Acc + Cost<Acc = A>>(
         #[cfg(not(feature = "rayon"))]
         let batch = if adaptive { 1 } else { m - produced };
         let tables: Vec<_> = (0..batch)
-            .map(|_| Candidate::Search(perturb(start.nodes(), sizes.len(), anchor, MU_F, &mut rng)))
+            .map(|_| Candidate::Search(perturb_member(root, &start, anchor, MU_F, &mut rng)))
             .collect();
         population.extend(improve(root, &tables, opts, solver)?);
         produced += batch;
@@ -249,7 +351,7 @@ pub(crate) fn memetic<A: Acc + Cost<Acc = A>>(
         };
         for member in mutate {
             candidates.push(if rng.uniform() < P_M {
-                Candidate::Search(perturb(member.nodes(), sizes.len(), anchor, MU_M, &mut rng))
+                Candidate::Search(perturb_member(root, member, anchor, MU_M, &mut rng))
             } else {
                 Candidate::Keep(member.clone())
             });
@@ -258,7 +360,11 @@ pub(crate) fn memetic<A: Acc + Cost<Acc = A>>(
             for _ in 0..(L * m - population.len()) / 2 {
                 let x = &population[rng.below(population.len())];
                 let y = &population[rng.below(population.len())];
-                let (x, y) = crossover(x.nodes(), y.nodes(), &sizes, &mut rng);
+                let (x, y) = if root.is_gated() {
+                    crossover_gated(x.nodes(), y.nodes(), &sizes, &mut rng)
+                } else {
+                    crossover(x.nodes(), y.nodes(), &sizes, &mut rng)
+                };
                 candidates.extend([Candidate::Search(x), Candidate::Search(y)]);
             }
         }

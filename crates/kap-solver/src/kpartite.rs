@@ -32,6 +32,8 @@ pub enum KapError {
         /// Actual number after adding all unlisted vertices as singletons.
         actual: usize,
     },
+    /// The supplied gated initial solution contains a forbidden pair.
+    ForbiddenInitial,
     /// A partite is too large for u32 vertex identifiers.
     TooManyVertices(usize),
     /// Constituent LAP error.
@@ -63,6 +65,7 @@ impl fmt::Display for KapError {
                 f,
                 "initial must be a complete solution: {expected} nodes expected, {actual} given"
             ),
+            Self::ForbiddenInitial => write!(f, "initial places a forbidden pair in one clique"),
             Self::TooManyVertices(n) => write!(f, "partite size {n} exceeds u32 vertex capacity"),
             Self::Lap(e) => e.fmt(f),
             Self::Unsupported(what) => f.write_str(what),
@@ -394,6 +397,10 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
     pub(crate) fn nodes(&self) -> &[u32] {
         assert_eq!(self.n_parts(), 1);
         &self.parts[0].nodes
+    }
+
+    pub(crate) fn is_gated(&self) -> bool {
+        self.gated
     }
 
     /// Number of current super-partites.
@@ -798,9 +805,10 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
                 }
             }
         }
-        // The largest original part has a vertex in every node: one side has N
-        // nodes and the current matching is maximum-cardinality. Rectangular LAP
-        // cannot worsen its optimum or change the final node count N.
+        // Without gating, a largest original part fills every node, so the
+        // induced matching is maximum-cardinality and LAP preserves node count.
+        // With gating it is a feasible partial matching; solve_pair may drop
+        // edges and dissolve nodes while improving the shifted objective.
         Ok((
             Self {
                 k_orig: k,
