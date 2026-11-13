@@ -59,6 +59,10 @@ pub trait Acc:
     fn checked_neg(self) -> Option<Self> {
         Some(-self)
     }
+    /// Subtract without integer overflow.
+    fn checked_sub(self, rhs: Self) -> Option<Self> {
+        Some(self - rhs)
+    }
 }
 
 impl Acc for f64 {
@@ -98,6 +102,9 @@ impl Acc for i64 {
     }
     fn checked_neg(self) -> Option<Self> {
         self.checked_neg()
+    }
+    fn checked_sub(self, rhs: Self) -> Option<Self> {
+        self.checked_sub(rhs)
     }
 }
 

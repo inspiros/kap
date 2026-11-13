@@ -208,7 +208,24 @@ fn from_cliques<A: Acc + Cost<Acc = A>>(
     }
     let start = Quotient::from_nodes_checked(root, nodes)?;
     if root.is_gated() && !start.score.is_finite() {
-        return Err(KapError::ForbiddenInitial);
+        // Tell a forbidden pair from a float sum that overflowed.
+        let forbidden = start.nodes().chunks_exact(k).any(|row| {
+            (0..k).any(|a| {
+                (a + 1..k).any(|b| {
+                    row[a] != NONE
+                        && row[b] != NONE
+                        && !root
+                            .matrix(a, b)
+                            .get(row[a] as usize, row[b] as usize)
+                            .is_finite()
+                })
+            })
+        });
+        return Err(if forbidden {
+            KapError::ForbiddenInitial
+        } else {
+            KapError::Unsupported("cost overflow")
+        });
     }
     Ok(start)
 }

@@ -250,14 +250,20 @@ fn improve<A: Acc + Cost<Acc = A>>(
     };
     #[cfg(not(feature = "rayon"))]
     let results: Result<Vec<_>, KapError> = candidates.iter().map(|q| run(q, solver)).collect();
-    Ok(results?
-        .into_iter()
-        .filter(|q| q.score.is_finite())
-        .collect())
+    results
 }
 
-fn select<A: Acc + Cost<Acc = A>>(population: &mut Vec<Quotient<A>>, m: usize, sense: Sense) {
-    population.retain(|q| q.score.is_finite());
+fn select<A: Acc + Cost<Acc = A>>(
+    population: &mut Vec<Quotient<A>>,
+    m: usize,
+    sense: Sense,
+    gated: bool,
+) {
+    // Gated operators can leave a forbidden pair that DV did not remove; such
+    // members are dropped, unless nothing else is left (overflowed scores).
+    if gated && population.iter().any(|q| q.score.is_finite()) {
+        population.retain(|q| q.score.is_finite());
+    }
     population.sort_by(|x, y| {
         if better(x.score, y.score, sense) {
             Ordering::Less
@@ -330,9 +336,9 @@ pub(crate) fn memetic<A: Acc + Cost<Acc = A>>(
             .collect();
         population.extend(improve(root, &tables, opts, solver)?);
         produced += batch;
-        select(&mut population, m, opts.sense);
+        select(&mut population, m, opts.sense, root.is_gated());
     }
-    select(&mut population, m, opts.sense);
+    select(&mut population, m, opts.sense, root.is_gated());
     for _ in 0..opts.max_iter {
         if expired() {
             break;
@@ -369,7 +375,7 @@ pub(crate) fn memetic<A: Acc + Cost<Acc = A>>(
             }
         }
         population = improve(root, &candidates, opts, solver)?;
-        select(&mut population, m, opts.sense);
+        select(&mut population, m, opts.sense, root.is_gated());
     }
     Ok(population.remove(0))
 }

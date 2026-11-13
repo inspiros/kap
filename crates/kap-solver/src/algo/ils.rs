@@ -78,6 +78,9 @@ pub(crate) fn ils_from<A: Acc + Cost<Acc = A>>(
         .and_then(|limit| Instant::now().checked_add(limit));
     let chain = |t: usize, solver: &mut LapSolver<A>| -> Result<Quotient<A>, KapError> {
         let mut rng = Rng::new(opts.seed, t as u64);
+        // A gated perturbation can place a forbidden pair in a row; DV removes
+        // it, and this guard keeps any such candidate out regardless.
+        let finite = |q: &Quotient<A>| !root.is_gated() || q.score.is_finite();
         let mut current = start.clone();
         let mut best = start.clone();
         let n = current.n_nodes(0);
@@ -104,7 +107,7 @@ pub(crate) fn ils_from<A: Acc + Cost<Acc = A>>(
             let candidate = perturb(root, &current, anchor, p, &mut rng)?;
             let candidate =
                 dv::improve(root, candidate, opts.dv, dv::CONVERGE, opts.sense, solver)?;
-            if candidate.score.is_finite() && better(candidate.score, current.score, opts.sense) {
+            if finite(&candidate) && better(candidate.score, current.score, opts.sense) {
                 current = candidate;
                 fails = 0;
                 if better(current.score, best.score, opts.sense) {
@@ -115,7 +118,7 @@ pub(crate) fn ils_from<A: Acc + Cost<Acc = A>>(
                 // Escape stagnation: after PATIENCE consecutive failures step
                 // to the latest candidate even though it is not better. The
                 // best solution seen is kept separately and returned.
-                if fails >= PATIENCE && candidate.score.is_finite() {
+                if fails >= PATIENCE && finite(&candidate) {
                     current = candidate;
                     fails = 0;
                 }

@@ -446,17 +446,15 @@ fn threshold_conversion_boundaries_and_overflow() {
             Err(KapError::Unsupported("cost overflow"))
         );
     }
-    // The full integer range has no forbidden sentinel; non-improving extreme
-    // values are clipped before the LAP's integer headroom validation.
+    // Shifted integer entries need the LAP's headroom even when clipping would
+    // hide them, so that quotient sums cannot wrap.
     for (value, sense) in [(i64::MAX, Sense::Minimize), (i64::MIN, Sense::Maximize)] {
         let data = [value];
         let mats = [MatrixView::from_row_major(&data, 1, 1).unwrap()];
-        assert_eq!(
-            k_assignment(&mats, Algo::Am, &options(0.0, sense))
-                .unwrap()
-                .cost,
-            0
-        );
+        assert!(matches!(
+            k_assignment(&mats, Algo::Am, &options(0.0, sense)),
+            Err(KapError::Lap(_))
+        ));
     }
 }
 
@@ -863,4 +861,56 @@ fn gated_search_short_deadlines_and_shrinking_rows() {
             validate(&[1, 1, 1], &one, &sol);
         }
     }
+}
+
+// Regressions from the review of the gating batch.
+
+#[test]
+fn ungated_memetic_keeps_a_start_whose_score_overflowed() {
+    let data = vec![vec![-1e308, 0.0, 0.0, -1e308]];
+    let mats = views(&[2, 2], &data);
+    for threshold in [None, Some(0.0)] {
+        let opts = Options {
+            threshold,
+            max_iter: 2,
+            population: Some(2),
+            ..Options::default()
+        };
+        let sol = k_assignment(&mats, Algo::Memetic, &opts).unwrap();
+        assert_eq!(sol.cliques.len(), 2);
+    }
+}
+
+#[test]
+fn gated_integer_entries_need_lap_headroom() {
+    // Clipping would hide the two large entries from the LAP; their quotient
+    // sum would then wrap to a negative, seemingly improving value.
+    let data = vec![vec![-1i64], vec![i64::MAX], vec![i64::MAX]];
+    let mats = views(&[1, 1, 1], &data);
+    for algo in ALGOS {
+        let err = k_assignment(&mats, algo, &options(0.0, Sense::Minimize)).unwrap_err();
+        assert!(matches!(err, KapError::Lap(_)), "{algo:?}: {err:?}");
+    }
+}
+
+#[test]
+fn most_negative_integer_threshold_is_subtracted_directly() {
+    let data = vec![vec![i64::MIN + 1024]];
+    let mats = views(&[1, 1], &data);
+    let sol = k_assignment(&mats, Algo::Am, &options(i64::MIN as f64, Sense::Maximize)).unwrap();
+    assert_eq!(sol.cliques, vec![vec![(0, 0), (1, 0)]]);
+    assert_eq!(sol.cost, i64::MIN + 1024);
+}
+
+#[test]
+fn overflowed_warm_start_is_not_reported_as_forbidden() {
+    let data = vec![vec![-1e308], vec![-1e308], vec![-1e308]];
+    let mats = views(&[1, 1, 1], &data);
+    let opts = Options {
+        max_iter: 0,
+        ..options(0.0, Sense::Minimize)
+    };
+    let err =
+        k_assignment_from(&mats, &[vec![(0, 0), (1, 0), (2, 0)]], Algo::Dv1, &opts).unwrap_err();
+    assert_eq!(err, KapError::Unsupported("cost overflow"));
 }

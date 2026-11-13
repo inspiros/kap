@@ -195,9 +195,6 @@ impl<A: Acc + Cost<Acc = A>> KPartite<A> {
     /// infinity is forbidden: `+inf` for minimization, `-inf` for maximization.
     pub fn gated(&self, tau: f64, sense: Sense) -> Result<Self, KapError> {
         let tau = A::from_f64_exact(tau).ok_or(KapError::BadOption("threshold"))?;
-        let offset = tau
-            .checked_neg()
-            .ok_or(KapError::Unsupported("cost overflow"))?;
         let forbidden = match sense {
             Sense::Minimize => A::INF,
             Sense::Maximize => -A::INF,
@@ -209,11 +206,21 @@ impl<A: Acc + Cost<Acc = A>> KPartite<A> {
                 if !value.is_finite() && value != forbidden {
                     return Err(LapError::InvalidCost(i / m.cols, i % m.cols).into());
                 }
-                data.push(
-                    value
-                        .checked_add(offset)
-                        .ok_or(KapError::Unsupported("cost overflow"))?,
-                );
+                let shifted = value
+                    .checked_sub(tau)
+                    .ok_or(KapError::Unsupported("cost overflow"))?;
+                // Clipping hides non-improving entries from the LAP, so apply
+                // its entry rule here: quotient sums then have the same
+                // headroom as without a threshold, and a float shift that
+                // overflows to the wrong infinity is rejected.
+                let oriented = match sense {
+                    Sense::Minimize => Some(shifted),
+                    Sense::Maximize => shifted.checked_neg(),
+                };
+                if !oriented.is_some_and(Acc::is_valid) {
+                    return Err(LapError::InvalidCost(i / m.cols, i % m.cols).into());
+                }
+                data.push(shifted);
             }
             matrices.push(Dense {
                 data: data.into(),
@@ -512,6 +519,7 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
     }
 
     /// Merge a fixed, possibly partial matching, computing its current pair cost.
+    /// The matching is not checked against forbidden pairs of a gated problem.
     pub fn fix(&self, a: usize, b: usize, matching: &[(u32, u32)]) -> Result<Self, KapError> {
         self.check_pair(a, b)?;
         let m = self.matrix(a, b);

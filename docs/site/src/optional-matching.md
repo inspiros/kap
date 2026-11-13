@@ -104,6 +104,8 @@ The Rust example prints identical output.
 
 - `exact` and `lower_bound` do not take a threshold.
 - Thresholds require the native core. Python reference and other LAP backends reject them with `ValueError`.
+- Shifted integer costs must lie strictly between −2⁶¹ and 2⁶¹, as for costs without a threshold; larger values are rejected as invalid entries.
+- Float costs near the float64 limit (about 1e308) can overflow when summed; such sums are not detected in every path.
 - Infinite thresholds are rejected. Use `None` for the unchanged objective.
 - Thresholding and forbidden pairs also apply during refinement and search.
 
