@@ -7,6 +7,6 @@ C12 = np.array([[10, 25, 23], [1, 14, 16], [14, 4, 21]], dtype=np.int64)
 costs = [C01, C02, C12]
 
 result = kap.ils(costs, max_iter=20, n_chains=2, random_state=0, return_free=True)
-print("matches =", result.matches)
-print("matching_costs =", result.matching_costs)
+print("cliques =", result.cliques)
+print("costs =", result.costs)
 print("free =", result.free)

@@ -7,7 +7,7 @@ C12 = np.array([[6, 25, 5], [7, 3, 12], [19, 13, 2]], dtype=np.int64)
 costs = [C01, C02, C12]
 
 result = kap.local_search(costs)
-cost = sum(result.matching_costs)
+cost = result.cost
 bound = kap.lower_bound(costs, max_iter=30)
 print("cost =", cost)
 print("bound =", bound)

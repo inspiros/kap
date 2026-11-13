@@ -41,7 +41,7 @@ pub fn linear_sum_assignment<T: Cost>(
 
 Python `linear_sum_assignment` returns `(row_ind, col_ind)` as NumPy index arrays. Rows are increasing. The cost is `cost_matrix[row_ind, col_ind].sum()`.
 
-Python `linear_assignment` returns `AssignmentResult`: `matches` is an array of `(row, column)` pairs, `matching_costs` contains the selected entries, and optional `free` contains `(0, row)` or `(1, column)` singleton vertices.
+Python `linear_assignment` returns `AssignmentResult`: `cliques` is an array of `(row, column)` pairs, `costs` contains the selected entries, and optional `free` contains `(0, row)` or `(1, column)` singleton vertices.
 
 Rust returns `Result<LapSolution<T::Acc>, LapError>` with `row_ind`, `col_ind`, and total `cost`. It has no backend-selector or free-vertex field.
 

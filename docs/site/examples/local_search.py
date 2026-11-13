@@ -7,6 +7,6 @@ C12 = np.array([[3, 5, 22], [10, 5, 12], [1, 20, 26]], dtype=np.int64)
 costs = [C01, C02, C12]
 
 result = kap.local_search(costs, start="Dm", neighborhood="sdv", max_sweeps=10, return_free=True)
-print("matches =", result.matches)
-print("matching_costs =", result.matching_costs)
+print("cliques =", result.cliques)
+print("costs =", result.costs)
 print("free =", result.free)

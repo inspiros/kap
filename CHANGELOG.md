@@ -16,6 +16,7 @@ First release of the Rust crate `kap-solver` on crates.io.
 
 ### Changed
 
+- Python `AssignmentResult` fields renamed to `cliques`, `costs`, `free` to match Rust `KSolution`, with a new `cost` total; `matches` and `matching_costs` remain as deprecated aliases until 0.4.
 - Fractional thresholds with all-integer Python matrices require explicit float64 conversion and otherwise raise `ValueError`.
 - The default backend uses the Rust core, and ILS is the default k-assignment method.
 - Native Cm, Em, and Fm follow the paper's search rules and can return different results from 0.2.3. Fm runs all `max_iter` steps.

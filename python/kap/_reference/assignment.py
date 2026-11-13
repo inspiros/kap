@@ -1,5 +1,6 @@
 import itertools
 import math
+import warnings
 from collections import UserList, namedtuple
 from typing import List, Sequence, Tuple, Union, Optional
 
@@ -9,9 +10,27 @@ from ._types import Array2DLike
 
 __all__ = ["linear_assignment", "k_assignment"]
 
-AssignmentResult = namedtuple("AssignmentResult",
-                              ["matches", "matching_costs", "free"],
-                              defaults=[None, None, None])
+
+class AssignmentResult(namedtuple("AssignmentResult", ["cliques", "costs", "free"],
+                                  defaults=[None] * 3)):
+    __slots__ = ()
+
+    @property
+    def cost(self):
+        """Total cost of all cliques (None if costs is None)."""
+        return None if self.costs is None else sum(self.costs)
+
+    @property
+    def matches(self):
+        warnings.warn("matches is deprecated; use cliques. It will be removed in 0.4.",
+                      DeprecationWarning, stacklevel=2)
+        return self.cliques
+
+    @property
+    def matching_costs(self):
+        warnings.warn("matching_costs is deprecated; use costs. It will be removed in 0.4.",
+                      DeprecationWarning, stacklevel=2)
+        return self.costs
 
 
 def _compute_n_partites(cost_matrices: Sequence[Array2DLike]) -> Optional[int]:
@@ -223,21 +242,21 @@ class KPartiteGraph:
         return acc_cost
 
     def reconstruct(self, return_free: bool = False) -> AssignmentResult:
-        matches, free, matching_costs = [], [] if return_free else None, []
+        matches, free, costs = [], [] if return_free else None, []
         for node_indices_i in self.node_indices:
             for node in node_indices_i:
                 if node.is_quotient:
                     matches.append(node.quotient_nodes)
-                    matching_costs.append(node.vertices_cost)
+                    costs.append(node.vertices_cost)
                 elif return_free:
                     free.append(node.quotient_nodes)
         # matches = np.array(matches)
         # free = np.array(free)
-        # matching_costs = np.array(matching_costs)
-        return AssignmentResult(matches, matching_costs, free)
+        # costs = np.array(costs)
+        return AssignmentResult(matches, costs, free)
 
     def reconstruct_from(self, node_indices, return_free: bool = False) -> AssignmentResult:
-        matches, free, matching_costs = [], [] if return_free else None, []
+        matches, free, costs = [], [] if return_free else None, []
         for node_indices_i in node_indices:
             for node in node_indices_i:
                 if node.is_quotient:
@@ -247,14 +266,14 @@ class KPartiteGraph:
                             node_k = quotient_nodes[k]
                             node_l = quotient_nodes[l]
                             matches.append([node_k, node_l])
-                            matching_costs.append(self[node_k[0], node_l[0]][node_k[1], node_l[1]])
+                            costs.append(self[node_k[0], node_l[0]][node_k[1], node_l[1]])
                     # matches.append(node.quotient_nodes)
                 elif return_free:
                     free.append(node.quotient_nodes)
         # matches = np.array(matches)
         # free = np.array(free)
-        # matching_costs = np.array(matching_costs)
-        return AssignmentResult(matches, matching_costs, free)
+        # costs = np.array(costs)
+        return AssignmentResult(matches, costs, free)
 
     def clone(self) -> 'KPartiteGraph':
         return KPartiteGraph(self.cost_matrices, self.n_partites, self.node_indices)
@@ -310,8 +329,7 @@ def linear_assignment(cost_matrix: Array2DLike,
             Defaults to "kap".
 
     Returns:
-        matching_results: A namedtuple of ``matches``, ``matching_costs``,
-            and optionally ``free`` vertices if ``return_free`` is True.
+        matching_results: Cliques, their costs, the total cost, and optionally free vertices.
 
     Notes:
         This function currently only accepts dense matrix.
@@ -362,7 +380,7 @@ def linear_assignment(cost_matrix: Array2DLike,
     else:
         raise ValueError(f"backend must be either kap | scipy | lap | lapjv | munkres. "
                          f"Got {backend}.")
-    matching_costs = cost_matrix[tuple(matches.T.tolist())]
+    costs = cost_matrix[tuple(matches.T.tolist())]
 
     if return_free:
         free = []
@@ -370,7 +388,7 @@ def linear_assignment(cost_matrix: Array2DLike,
         free += [(1, _) for _ in list(set(range(cost_matrix.shape[1])).difference(matches[:, 1].tolist()))]
     else:
         free = None
-    return AssignmentResult(matches, matching_costs, free)
+    return AssignmentResult(matches, costs, free)
 
 
 # noinspection DuplicatedCode
@@ -701,8 +719,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
     threshold is unsupported here and raises ValueError unless it is None.
 
     Returns:
-        matching_results: A namedtuple of ``matches``, ``matching_costs``,
-            and optionally ``free`` vertices if ``return_free`` is True.
+        matching_results: Cliques, their costs, the total cost, and optionally free vertices.
 
     References:
         [1] Multiple Hungarian Method for k-Assignment Problem.

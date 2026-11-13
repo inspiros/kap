@@ -7,6 +7,6 @@ C12 = np.array([[14, 24, 9], [21, 20, 12], [23, 28, 8]], dtype=np.int64)
 costs = [C01, C02, C12]
 
 result = kap.memetic(costs, generations=4, population=4, random_state=0, return_free=True)
-print("matches =", result.matches)
-print("matching_costs =", result.matching_costs)
+print("cliques =", result.cliques)
+print("costs =", result.costs)
 print("free =", result.free)

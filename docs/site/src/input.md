@@ -48,7 +48,7 @@ where
 
 ## Returns
 
-Python returns `AssignmentResult(matches, matching_costs, free)`. Each match is a clique of `(part, vertex)` pairs. Its cost is the sum of its pairwise edges. `free` is `None` unless requested; it then lists singleton vertices.
+Python returns `AssignmentResult(cliques, costs, free)`. Each clique contains `(part, vertex)` pairs, and its cost is the sum of its pairwise edges. `result.cost` gives the total cost. `free` is `None` unless requested; it then lists singleton vertices.
 
 Rust returns `Result<KSolution<T::Acc>, KapError>`. `cliques` and `costs` correspond to the Python fields. `cost` is their sum, and `free` always lists singletons. Singleton vertices are excluded from both languages' clique lists.
 
@@ -98,7 +98,7 @@ Python output:
 
 The Rust example prints the same cliques and costs, with the same free vertices.
 
-Here k=3, with part sizes 3, 3, and 2. C01 has shape (3, 3); C02 and C12 each have shape (3, 2). Each `matches` entry lists the vertices in one clique. `matching_costs` gives the cost of that clique, summed over its pairs. `free` is empty because every vertex belongs to a clique of size at least two; a part missing from a clique does not make the other vertices free.
+Here k=3, with part sizes 3, 3, and 2. C01 has shape (3, 3); C02 and C12 each have shape (3, 2). Each `cliques` entry lists the vertices in one clique. `costs` gives the cost of that clique, summed over its pairs. `free` is empty because every vertex belongs to a clique of size at least two; a part missing from a clique does not make the other vertices free.
 
 The minimizing result contains these cliques:
 
@@ -126,7 +126,7 @@ A uint64 value above the signed 64-bit maximum raises OverflowError on the all-i
 
 - The native core accepts 2 through 64 parts. A valid matrix count is k(k−1)/2, with consistent dimensions across every occurrence of a part.
 - Part sizes may differ for the heuristic methods; exact and lower_bound require equal sizes.
-- Free vertices are singleton nodes. They contribute zero pairwise cost and are excluded from the match and cost lists.
+- Free vertices are singleton nodes. They contribute zero pairwise cost and are excluded from the clique and cost lists.
 - Select maximize=True in Python, or Sense::Maximize in Rust. The returned costs use the original objective sense.
 
 ## See also

@@ -11,8 +11,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     let initial: Vec<_> = (0..3).map(|i| vec![(0, i), (1, i), (2, i)]).collect();
     let result = k_assignment_from(&costs, &initial, Algo::Dv1, &Options::default())?;
-    println!("matches = {:?}", result.cliques);
-    println!("matching_costs = {:?}", result.costs);
+    println!("cliques = {:?}", result.cliques);
+    println!("costs = {:?}", result.costs);
     println!("free = {:?}", result.free);
     Ok(())
 }

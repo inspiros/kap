@@ -5,9 +5,9 @@
 parts `i` and `j` and contracting each matched pair into one vertex gives
 the *quotient graph* `G / M_ij`, which has one part fewer. The cost row of
 a merged vertex is the sum of the rows of its two members, so the cost of the
-final matches is the sum of all pairwise edges inside each match (the clique
+final cliques is the sum of all pairwise edges inside each clique (the clique
 cost). After k − 1 merges a single part remains, and each of its vertices
-is a match.
+is a clique.
 
 Am, Bm and Dm differ in which pairs they merge. Cm, Em and Fm start from Bm
 and improve the result by local search. Their neighborhood is the same:
@@ -40,7 +40,7 @@ of Karapetyan and Gutin.
 
 DV re-matching exactly re-solves the assignment between a chosen subset of
 parts and its complement. Each move is nonworsening; the two sides may
-have unequal sizes, so incomplete matches are supported. 1DV re-matches one
+have unequal sizes, so incomplete cliques are supported. 1DV re-matches one
 part against the remaining parts, cycling through them; each sweep uses
 `k` LAPs (`k = 2` needs one). sDV visits canonical subsets, choosing one of
 each subset/complement pair. It uses cyclic first improvement: apply an
@@ -135,7 +135,7 @@ this. Beyond about k = 6, use Am or Dm.
 ## Differences from the paper
 
 - The paper assumes all parts have the same size. kap also accepts
-  unequal sizes; the vertices left over then form incomplete matches.
+  unequal sizes; the vertices left over then form incomplete cliques.
 - The paper breaks ties at random; kap's Bm takes the first best pair.
 - With `backend="kap"` (native, default), Cm, Em and Fm follow the paper as
   in the table above. Other backends run the Python implementation, which keeps

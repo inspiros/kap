@@ -15,8 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Options::default()
     };
     let result = k_assignment(&costs, Algo::Shift, &opts)?;
-    println!("matches = {:?}", result.cliques);
-    println!("matching_costs = {:?}", result.costs);
+    println!("cliques = {:?}", result.cliques);
+    println!("costs = {:?}", result.costs);
     println!("free = {:?}", result.free);
     Ok(())
 }

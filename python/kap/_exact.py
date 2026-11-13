@@ -45,7 +45,7 @@ def exact(cost_matrices, *, maximize=False, time_limit=None, return_free=False,
         max_variables: Maximum permitted number of tuple variables, n**k.
 
     Returns:
-        AssignmentResult: Matches, their costs, and optionally free vertices.
+        AssignmentResult: Cliques, their costs, the total cost, and optionally free vertices.
 
     Raises:
         ExactTimeoutError: HiGHS stopped at its limit before proving optimality.

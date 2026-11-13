@@ -26,10 +26,10 @@ def brute(matrices, k, n, maximize):
 
 
 def check_partition(result, k, n):
-    assert len(result.matches) == n
-    assert all([p for p, _ in match] == list(range(k)) for match in result.matches)
+    assert len(result.cliques) == n
+    assert all([p for p, _ in match] == list(range(k)) for match in result.cliques)
     for p in range(k):
-        assert sorted(match[p][1] for match in result.matches) == list(range(n))
+        assert sorted(match[p][1] for match in result.cliques) == list(range(n))
 
 
 @pytest.mark.parametrize('k,n', [(3, 2), (3, 3), (3, 4), (4, 2), (4, 3)])
@@ -41,13 +41,13 @@ def test_brute_force(k, n, seed, dtype, maximize):
     result = kap.exact(matrices, maximize=maximize, return_free=True)
     optimum = brute(matrices, k, n, maximize)
     if dtype is int:
-        assert sum(result.matching_costs) == optimum
+        assert sum(result.costs) == optimum
     else:
-        assert sum(result.matching_costs) == pytest.approx(optimum)
+        assert sum(result.costs) == pytest.approx(optimum)
     check_partition(result, k, n)
     assert result.free == []
     if dtype is int:
-        assert all(isinstance(cost, int) for cost in result.matching_costs)
+        assert all(isinstance(cost, int) for cost in result.costs)
 
 
 @pytest.mark.parametrize('maximize', [False, True])
@@ -55,11 +55,11 @@ def test_two_parts_and_structure(maximize):
     matrices = instance(2, 5, 3, int)
     result = kap.exact(matrices, maximize=maximize, return_free=True)
     rows, cols = kap.linear_sum_assignment(matrices[0], maximize=maximize)
-    assert sum(result.matching_costs) == matrices[0][rows, cols].sum()
+    assert sum(result.costs) == matrices[0][rows, cols].sum()
     reference = kap.ils(matrices, return_free=True, random_state=0)
     assert type(result) is type(reference)
-    assert [type(result.matches), type(result.matching_costs), type(result.free)] == [type(reference.matches), type(reference.matching_costs), type(reference.free)]
-    assert all(isinstance(match, list) and all(isinstance(node, tuple) for node in match) for match in result.matches)
+    assert [type(result.cliques), type(result.costs), type(result.free)] == [type(reference.cliques), type(reference.costs), type(reference.free)]
+    assert all(isinstance(match, list) and all(isinstance(node, tuple) for node in match) for match in result.cliques)
     assert kap.exact(matrices).free is None
 
 
@@ -67,7 +67,7 @@ def test_two_parts_and_structure(maximize):
 @pytest.mark.parametrize('maximize', [False, True])
 def test_heuristics(k, n, maximize):
     matrices = instance(k, n, 9, int)
-    optimum = sum(kap.exact(matrices, maximize=maximize).matching_costs)
+    optimum = sum(kap.exact(matrices, maximize=maximize).costs)
     results = [kap.ils(matrices, max_iter=3, random_state=0, maximize=maximize),
                kap.memetic(matrices, generations=2, population=4, random_state=0, maximize=maximize),
                kap.local_search(matrices, max_sweeps=3, maximize=maximize)]
@@ -76,7 +76,7 @@ def test_heuristics(k, n, maximize):
                 for method in ('Am', 'Bm', 'Cm', 'Dm', 'Em', 'Fm')]
     for result in results:
         check_partition(result, k, n)
-        score = sum(result.matching_costs)
+        score = sum(result.costs)
         assert score <= optimum if maximize else score >= optimum
 
 
@@ -117,7 +117,7 @@ def test_original_integer_costs(maximize, sign):
     base = 2**52 - 2
     matrices = [sign * np.array([[base, base + 1], [base, base]], dtype=np.int64)]
     optimum = brute(matrices, 2, 2, maximize)
-    assert sum(kap.exact(matrices, maximize=maximize).matching_costs) == optimum
+    assert sum(kap.exact(matrices, maximize=maximize).costs) == optimum
 
 
 @pytest.mark.parametrize('value', [2**53, -(2**53), np.iinfo(np.int64).min])
@@ -131,7 +131,7 @@ def test_integer_precision_guard_sums_with_python_ints():
     # Per-matrix maxima fit int64, but their sum does not.
     with pytest.raises(OverflowError, match='integer costs.*float64'):
         kap.exact([np.full((1, 1), 2**62, dtype=np.int64)] * 6)
-    assert kap.exact([np.array([[2**53]], dtype=np.int64)]).matching_costs == [2**53]
+    assert kap.exact([np.array([[2**53]], dtype=np.int64)]).costs == [2**53]
 
 
 @pytest.mark.parametrize('scale', [1, 1e8, 1e-200, 1e200])
@@ -139,7 +139,7 @@ def test_integer_precision_guard_sums_with_python_ints():
 def test_float_objective_scale(scale, maximize):
     matrices = scale * 1e-8 * np.array([[[0, 2], [1, 1]], [[1, 2], [0, 2]], [[0, 0], [1, 2]]])
     optimum = brute(matrices, 3, 2, maximize)
-    cost = sum(kap.exact(matrices, maximize=maximize).matching_costs)
+    cost = sum(kap.exact(matrices, maximize=maximize).costs)
     assert cost == pytest.approx(optimum, rel=1e-9, abs=0)
 
 

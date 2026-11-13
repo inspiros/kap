@@ -31,7 +31,7 @@ def lower_bound(cost_matrices, *, maximize=False, max_iter=300) -> int | float:
 
     Typical use for a heuristic solution with positive total cost::
 
-        cost = sum(kap.ils(cost_matrices).matching_costs)
+        cost = kap.ils(cost_matrices).cost
         bound = kap.lower_bound(cost_matrices)
         gap = (cost - bound) / cost
     """

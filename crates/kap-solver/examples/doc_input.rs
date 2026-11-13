@@ -17,8 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Vec<_>>()
     );
     let result = k_assignment(&costs, Algo::Am, &Options::default())?;
-    println!("matches = {:?}", result.cliques);
-    println!("matching_costs = {:?}", result.costs);
+    println!("cliques = {:?}", result.cliques);
+    println!("costs = {:?}", result.costs);
     println!("free = {:?}", result.free);
     let opts = Options {
         sense: Sense::Maximize,
@@ -26,8 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let result = k_assignment(&costs, Algo::Am, &opts)?;
     println!("maximize:");
-    println!("matches = {:?}", result.cliques);
-    println!("matching_costs = {:?}", result.costs);
+    println!("cliques = {:?}", result.cliques);
+    println!("costs = {:?}", result.costs);
     println!("free = {:?}", result.free);
     Ok(())
 }

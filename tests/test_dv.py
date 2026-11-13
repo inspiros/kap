@@ -34,7 +34,7 @@ def test_valid_and_never_worse(algo, refine, k, equal, maximize):
         base = kap.k_assignment(matrices, algo="shift", refine=refine or "1dv", **options)
     else:
         base = kap.k_assignment(matrices, algo=base_algo, **options)
-    cost, base_cost = sum(actual.matching_costs), sum(base.matching_costs)
+    cost, base_cost = sum(actual.costs), sum(base.costs)
     assert cost >= base_cost if maximize else cost <= base_cost
     if k == 3 and algo == "1dv":
         assert actual == kap.k_assignment(matrices, algo="sdv", refine=refine, **options)
@@ -51,7 +51,7 @@ def test_independent_single_part_local_optimum(seed, k, maximize, algo):
     result = kap.k_assignment(matrices, algo=algo, maximize=maximize, random_state=42)
     # Read the returned matches only: each row fixes the vertices of all parts
     # except p, and each column offers a vertex of p for that partial clique.
-    vertices = np.array([[v for _, v in sorted(clique)] for clique in result.matches])
+    vertices = np.array([[v for _, v in sorted(clique)] for clique in result.cliques])
     assert vertices.shape == (n, k)
     for p in range(k):
         costs = np.zeros((n, n), dtype=np.int64)
@@ -164,7 +164,7 @@ def test_ils_valid_reproducible_and_chain_budget(sizes, maximize, refine):
     assert_valid_assignment(matrices, sizes, four)
     dv = kap.k_assignment(matrices, algo="sdv" if refine else "1dv",
                           maximize=maximize, max_iter=10_000, return_free=True)
-    costs = [sum(result.matching_costs) for result in (dv, one, four)]
+    costs = [sum(result.costs) for result in (dv, one, four)]
     assert costs == sorted(costs, reverse=not maximize)
     start = kap.k_assignment(matrices, **{**options, "max_iter": 0})
     assert start == dv
@@ -250,12 +250,12 @@ def test_memetic_valid_reproducible_and_start(sizes, maximize, refine):
     assert actual == kap.k_assignment(matrices, n_trials=0, **options)
     start = kap.k_assignment(matrices, algo="shift", refine=refine or "1dv",
                             maximize=maximize, max_iter=10_000)
-    cost, start_cost = sum(actual.matching_costs), sum(start.matching_costs)
+    cost, start_cost = sum(actual.costs), sum(start.costs)
     assert cost >= start_cost if maximize else cost <= start_cost
     zero = kap.k_assignment(matrices, **{**options, "max_iter": 0})
     assert zero == kap.k_assignment(matrices, **{**options, "max_iter": -5})
     assert_valid_assignment(matrices, sizes, zero)
-    zero_cost = sum(zero.matching_costs)
+    zero_cost = sum(zero.costs)
     assert zero_cost >= start_cost if maximize else zero_cost <= start_cost
 
 

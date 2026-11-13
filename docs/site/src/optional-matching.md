@@ -51,7 +51,7 @@ This is a soft gate: a pair costlier than tau can share a clique when the clique
 
 A float cost of `+inf` (minimise) / `-inf` (maximise) forbids a pair. To forbid every pair above a limit, set those entries to `inf` before calling. For maximisation, use `-inf` to forbid pairs, for example weights below a limit. NaN and the other infinity are errors.
 
-Returned costs are in original units, not shifted. Each reported clique cost is the sum of its original pair costs. Singletons are omitted from `matches` and appear in `free` when `return_free=True`.
+Returned costs are in original units, not shifted. Each reported clique cost is the sum of its original pair costs. Singletons are omitted from `cliques` and appear in `free` when `return_free=True`.
 
 All-integer Python matrices require an integral threshold, including integral float thresholds such as `2.0`, and keep exact int64 arithmetic. A fractional threshold raises `ValueError`; explicitly convert the matrices to float64 to use one. Float64 conversion can round large integer costs. Thresholds pass to Rust as float64; Python rejects integral thresholds that cannot be represented exactly as float64. Rust integer matrices require an integral threshold representable in the accumulator type.
 
@@ -61,7 +61,7 @@ Dm ranks intermediate merges by the shifted objective, so a large threshold does
 
 ## Returns
 
-Python returns `AssignmentResult(matches, matching_costs, free)`. Rust returns `KSolution` with `cliques`, `costs`, total `cost`, and `free`. Costs use original units in both languages.
+Python returns `AssignmentResult(cliques, costs, free)`. Rust returns `KSolution` with `cliques`, `costs`, total `cost`, and `free`. Costs use original units in both languages.
 
 ## Errors
 

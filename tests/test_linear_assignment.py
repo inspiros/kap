@@ -10,8 +10,8 @@ from conftest import DTYPES
 
 def assert_lap_result(cost, result, scipy_assignment, maximize):
     rows, columns = scipy_assignment(cost, maximize=maximize)
-    assert np.isclose(sum(result.matching_costs), cost[rows, columns].sum())
-    matches = np.asarray(result.matches)
+    assert np.isclose(sum(result.costs), cost[rows, columns].sum())
+    matches = np.asarray(result.cliques)
     assert matches.shape == (min(cost.shape), 2)
     assert np.issubdtype(matches.dtype, np.integer)
     assert len(set(matches[:, 0])) == len(matches)
@@ -19,7 +19,7 @@ def assert_lap_result(cost, result, scipy_assignment, maximize):
     assert np.all((0 <= matches[:, 0]) & (matches[:, 0] < cost.shape[0]))
     assert np.all((0 <= matches[:, 1]) & (matches[:, 1] < cost.shape[1]))
     np.testing.assert_array_equal(
-        result.matching_costs, cost[matches[:, 0], matches[:, 1]]
+        result.costs, cost[matches[:, 0], matches[:, 1]]
     )
     expected_free = {
         (0, i) for i in set(range(cost.shape[0])) - set(matches[:, 0])

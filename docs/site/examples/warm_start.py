@@ -8,6 +8,6 @@ costs = [C01, C02, C12]
 
 initial = [[(0, i), (1, i), (2, i)] for i in range(3)]
 result = kap.local_search(costs, initial=initial, return_free=True)
-print("matches =", result.matches)
-print("matching_costs =", result.matching_costs)
+print("cliques =", result.cliques)
+print("costs =", result.costs)
 print("free =", result.free)

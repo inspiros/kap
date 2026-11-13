@@ -30,7 +30,7 @@ SIZES = [(3, n) for n in range(3, 9)] + [(4, n) for n in range(3, 7)] + [(5, n) 
 def test_exact_optimum(k, n, seed, dtype, maximize):
     pytest.importorskip("scipy")
     matrices = instance(k, n, seed, dtype)
-    optimum = sum(kap.exact(matrices, maximize=maximize).matching_costs)
+    optimum = sum(kap.exact(matrices, maximize=maximize).costs)
     bound = kap.lower_bound(matrices, maximize=maximize)
     tol = tolerance(optimum, dtype)
     assert bound >= optimum - tol if maximize else bound <= optimum + tol
@@ -42,7 +42,7 @@ def test_exact_optimum(k, n, seed, dtype, maximize):
 @pytest.mark.parametrize('maximize', [False, True])
 def test_heuristic_cost(k, n, seed, dtype, maximize):
     matrices = instance(k, n, seed, dtype)
-    cost = sum(kap.ils(matrices, random_state=seed, maximize=maximize).matching_costs)
+    cost = sum(kap.ils(matrices, random_state=seed, maximize=maximize).costs)
     bound = kap.lower_bound(matrices, maximize=maximize)
     tol = tolerance(cost, dtype)
     assert bound >= cost - tol if maximize else bound <= cost + tol

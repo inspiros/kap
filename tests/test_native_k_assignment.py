@@ -40,11 +40,11 @@ def test_oracle(algo, k, equal, maximize, seed, layout, dtype):
     if dtype == np.int64:
         assert actual == tuple(expected)
     else:
-        np.testing.assert_allclose(sum(actual[1]), sum(expected.matching_costs), rtol=1e-9)
+        np.testing.assert_allclose(sum(actual[1]), sum(expected.costs), rtol=1e-9)
     sizes = [matrices[0].shape[0]] + [matrices[p - 1].shape[1] for p in range(1, k)]
     assert_valid_assignment(
         matrices, sizes,
-        SimpleNamespace(matches=actual[0], matching_costs=actual[1], free=actual[2]),
+        SimpleNamespace(cliques=actual[0], costs=actual[1], free=actual[2]),
     )
     assert all(isinstance(part, list) for part in actual)
     assert all(isinstance(clique, list) for clique in actual[0])
@@ -74,7 +74,7 @@ def test_empty_partites(algo, sizes, maximize):
                 for p, a in enumerate(sizes) for b in sizes[p + 1:]]
     matches, costs, free = _core.k_assignment(matrices, algo, maximize)
     assert_valid_assignment(
-        matrices, sizes, SimpleNamespace(matches=matches, matching_costs=costs, free=free)
+        matrices, sizes, SimpleNamespace(cliques=matches, costs=costs, free=free)
     )
 
 
@@ -88,7 +88,7 @@ def test_local_search(algo, k, equal, maximize, dtype):
     sizes = [matrices[0].shape[0]] + [m.shape[1] for m in matrices[: k - 1]]
     matches, costs, free = _core.k_assignment(matrices, algo, maximize, seed=7)
     assert_valid_assignment(
-        matrices, sizes, SimpleNamespace(matches=matches, matching_costs=costs, free=free)
+        matrices, sizes, SimpleNamespace(cliques=matches, costs=costs, free=free)
     )
     bm_cost = sum(_core.k_assignment(matrices, "Bm", maximize)[1])
     assert (sum(costs) >= bm_cost - 1e-9) if maximize else (sum(costs) <= bm_cost + 1e-9)

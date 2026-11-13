@@ -13,7 +13,7 @@ from conftest import assert_valid_assignment, clique_cost, random_instance
 
 def canonical(result):
     return sorted((tuple(sorted(row)), cost)
-                  for row, cost in zip(result.matches, result.matching_costs))
+                  for row, cost in zip(result.cliques, result.costs))
 
 
 @pytest.mark.parametrize("k", (3, 4, 5))
@@ -39,11 +39,11 @@ def test_warm_start_quality_and_local_optimum(k, unequal, dtype, maximize, neigh
                                random_state=42, **options)
     for result in (local, searched):
         assert_valid_assignment(matrices, sizes, result)
-        assert len(result.matches) + len(result.free) == max(sizes)
-        start_cost = clique_cost(matrices, k, initial.matches)
-        cost = sum(result.matching_costs)
+        assert len(result.cliques) + len(result.free) == max(sizes)
+        start_cost = clique_cost(matrices, k, initial.cliques)
+        cost = sum(result.costs)
         assert cost >= start_cost - 1e-10 if maximize else cost <= start_cost + 1e-10
-    cost, local_cost = sum(searched.matching_costs), sum(local.matching_costs)
+    cost, local_cost = sum(searched.costs), sum(local.costs)
     assert cost >= local_cost - 1e-10 if maximize else cost <= local_cost + 1e-10
 
 
@@ -52,10 +52,10 @@ def test_warm_start_quality_and_local_optimum(k, unequal, dtype, maximize, neigh
 def test_result_matches_and_iterables_agree(solve, options, sizes):
     matrices = random_instance(len(sizes), sizes=sizes, seed=6, dtype=np.int64)
     initial = kap.local_search(matrices, return_free=True)
-    expected = solve(matrices, initial=initial.matches, return_free=True, **options)
+    expected = solve(matrices, initial=initial.cliques, return_free=True, **options)
     assert solve(matrices, initial=initial, return_free=True, **options) == expected
     # Both outer and inner generators are accepted; numpy integer indices too.
-    rows = ((tuple(np.int64(v) for v in node) for node in row) for row in initial.matches)
+    rows = ((tuple(np.int64(v) for v in node) for node in row) for row in initial.cliques)
     assert solve(matrices, initial=rows, return_free=True, **options) == expected
 
 
@@ -69,7 +69,7 @@ def test_complete_zero_costs_and_empty_parts(sizes, neighborhood):
     options = dict(initial=initial, neighborhood=neighborhood, return_free=True)
     for result in (kap.local_search(matrices, **options), kap.ils(matrices, max_iter=0, **options)):
         assert_valid_assignment(matrices, sizes, result)
-        assert len(result.matches) + len(result.free) == max(sizes)
+        assert len(result.cliques) + len(result.free) == max(sizes)
 
 
 @pytest.mark.parametrize("k", (2, 3, 4, 5))
@@ -153,14 +153,14 @@ def test_zero_sweeps_preserve_supplied_cliques():
     matrices = random_instance(3, sizes=sizes, seed=17, dtype=np.int64)
     initial = [[(2, 1), (0, 0), (1, 1)], [(1, 0), (2, 0)]]
     result = kap.local_search(matrices, initial=initial, max_sweeps=0, return_free=True)
-    assert result.matches == [sorted(row) for row in initial]
+    assert result.cliques == [sorted(row) for row in initial]
     assert_valid_assignment(matrices, sizes, result)
-    assert len(result.matches) + len(result.free) == max(sizes)
+    assert len(result.cliques) + len(result.free) == max(sizes)
     assert sorted(result.free) == [(1, 2), (1, 3)]
     assert initial == [[(2, 1), (0, 0), (1, 1)], [(1, 0), (2, 0)]]
     # Free vertices are restored even when the AssignmentResult omits `free`.
     without_free = kap.local_search(matrices, initial=initial, max_sweeps=0)
-    for warm in (result, result.matches, without_free):
+    for warm in (result, result.cliques, without_free):
         assert kap.local_search(matrices, initial=warm, max_sweeps=0, return_free=True) == result
 
 
@@ -200,4 +200,4 @@ def test_local_search_initial_always_requests_refinement(monkeypatch, neighborho
 
     monkeypatch.setattr(_core, "k_assignment", recording)
     kap.local_search(matrices, initial=initial, neighborhood=neighborhood)
-    assert calls == [("a", neighborhood, initial.matches)]
+    assert calls == [("a", neighborhood, initial.cliques)]

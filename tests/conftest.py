@@ -69,9 +69,9 @@ def assert_valid_assignment(cost_matrices, sizes, result):
     """Check coverage, clique structure, and every independently computed cost."""
     k = len(sizes)
     assert result.free is not None
-    assert len(result.matches) == len(result.matching_costs)
+    assert len(result.cliques) == len(result.costs)
     used = []
-    for match, reported_cost in zip(result.matches, result.matching_costs):
+    for match, reported_cost in zip(result.cliques, result.costs):
         assert 2 <= len(match) <= k
         partites = [p for p, _ in match]
         assert partites == sorted(set(partites))
@@ -80,11 +80,11 @@ def assert_valid_assignment(cost_matrices, sizes, result):
     used.extend(tuple(node) for node in result.free)
     expected = [(p, node) for p, size in enumerate(sizes) for node in range(size)]
     assert Counter(used) == Counter(expected)
-    assert np.isclose(sum(result.matching_costs), clique_cost(cost_matrices, k, result.matches))
+    assert np.isclose(sum(result.costs), clique_cost(cost_matrices, k, result.cliques))
     if len(set(sizes)) == 1:
         assert result.free == []
-        assert len(result.matches) == sizes[0]
-        assert all(len(match) == k for match in result.matches)
+        assert len(result.cliques) == sizes[0]
+        assert all(len(match) == k for match in result.cliques)
 
 
 @pytest.fixture

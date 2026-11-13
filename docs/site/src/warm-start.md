@@ -51,7 +51,7 @@ where
 
 ## Returns
 
-Python returns `AssignmentResult(matches, matching_costs, free)`. Each match is a clique of `(part, vertex)` pairs. Its cost is the sum of its pairwise edges. `free` is `None` unless requested; it then lists singleton vertices.
+Python returns `AssignmentResult(cliques, costs, free)`. Each clique contains `(part, vertex)` pairs, and its cost is the sum of its pairwise edges. `result.cost` gives the total cost. `free` is `None` unless requested; it then lists singleton vertices.
 
 Rust returns `Result<KSolution<T::Acc>, KapError>`. `cliques` and `costs` correspond to the Python fields. `cost` is their sum, and `free` always lists singletons. Singleton vertices are excluded from both languages' clique lists.
 
@@ -110,7 +110,7 @@ The Rust example prints the same cliques and costs, with the same free vertices.
 - `threshold=None` preserves unchanged behaviour. All-integer Python matrices require an integral threshold and keep exact int64 arithmetic. For a fractional threshold, explicitly convert the matrices to float64; otherwise the call raises `ValueError`. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - Without a threshold, a complete solution has exactly N=max(part sizes) nodes after singleton restoration. It need not contain a vertex from every part in each node.
-- Python accepts an `AssignmentResult` or an iterable of cliques. Only the result's `matches` field is used; costs are recomputed from the supplied matrices.
+- Python accepts an `AssignmentResult` or an iterable of cliques. Only the result's `cliques` field is used; costs are recomputed from the supplied matrices.
 - Unlisted vertices become singletons. Without a threshold this permits omitted free vertices but requires a complete assignment. With a threshold, arbitrary partial and empty assignments are accepted, subject to the index, uniqueness, and forbidden-pair checks.
 - ILS refines the supplied solution before starting all chains. Its time budget starts after that initial refinement.
 - DV uses k LAPs per 1DV sweep (one for k=2), or up to 2^(k−1)−1 per sDV sweep.

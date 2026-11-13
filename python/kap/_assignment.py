@@ -87,7 +87,7 @@ def _threshold(value):
 
 def _initial_cliques(initial, sizes, *, complete=True):
     if isinstance(initial, AssignmentResult):
-        initial = initial.matches
+        initial = initial.cliques
     try:
         cliques = [list(clique) for clique in initial]
     except TypeError:
@@ -184,7 +184,7 @@ def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborho
         return_free: Include unmatched vertices in the result.
         random_state: None, integer, RandomState or Generator; use an integer for reproducibility.
         initial: Iterable of cliques of (part, vertex) pairs, or an AssignmentResult
-            whose matches are used, replacing the Am start. Without a threshold,
+            whose cliques are used, replacing the Am start. Without a threshold,
             must be a complete solution such as a previous result: after unlisted vertices are added
             as singletons, there must be exactly max(part sizes) nodes.
             With a threshold, partial and empty solutions are accepted; forbidden
@@ -210,7 +210,7 @@ def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborho
     bool. Integral thresholds must be exactly representable as float64.
 
     Returns:
-        AssignmentResult: Matches, their costs, and optionally free vertices.
+        AssignmentResult: Cliques, their costs, the total cost, and optionally free vertices.
 
     A time limit makes results dependent on machine speed.
     """
@@ -256,7 +256,7 @@ def memetic(cost_matrices, *, generations=None, population=None, time_limit=None
     bool. Integral thresholds must be exactly representable as float64.
 
     Returns:
-        AssignmentResult: Matches, their costs, and optionally free vertices.
+        AssignmentResult: Cliques, their costs, the total cost, and optionally free vertices.
 
     A time limit makes results dependent on machine speed.
     """
@@ -282,7 +282,7 @@ def local_search(cost_matrices, *, neighborhood="1dv", start=None, initial=None,
         start: Starting method "Am", "Bm", "Dm", or "Shift", case-insensitive;
             None selects Am. Cannot be supplied together with initial.
         initial: Iterable of cliques of (part, vertex) pairs, or an AssignmentResult
-            whose matches are used, replacing the constructed start. Without a threshold,
+            whose cliques are used, replacing the constructed start. Without a threshold,
             must be a complete solution such as a previous result: after unlisted vertices are added
             as singletons, there must be exactly max(part sizes) nodes.
             With a threshold, partial and empty solutions are accepted; forbidden
@@ -311,7 +311,7 @@ def local_search(cost_matrices, *, neighborhood="1dv", start=None, initial=None,
     bool. Integral thresholds must be exactly representable as float64.
 
     Returns:
-        AssignmentResult: Matches, their costs, and optionally free vertices.
+        AssignmentResult: Cliques, their costs, the total cost, and optionally free vertices.
 
     This method is deterministic and needs no random seed.
     """
@@ -362,7 +362,7 @@ def multiple_hungarian(cost_matrices, method="Cm", *, max_iter=100, n_trials=1,
     bool. Integral thresholds must be exactly representable as float64.
 
     Returns:
-        AssignmentResult: Matches, their costs, and optionally free vertices.
+        AssignmentResult: Cliques, their costs, the total cost, and optionally free vertices.
     """
     shift = isinstance(method, str) and method.lower() in ("shift", "shiftam")
     if not shift:
@@ -428,7 +428,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike], algo: Optional[str] = Non
     bool. Integral thresholds must be exactly representable as float64.
 
     Returns:
-        AssignmentResult: Matches, their costs, and optionally free vertices.
+        AssignmentResult: Cliques, their costs, the total cost, and optionally free vertices.
     """
     native = isinstance(backend, str) and backend.lower() == "kap" and _core() is not None
     if threshold is not None and not native:

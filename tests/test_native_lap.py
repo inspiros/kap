@@ -151,9 +151,9 @@ def test_default_backend_is_native():
     cost = np.random.default_rng(5).normal(size=(6, 4))
     default = kap.linear_assignment(cost)
     native = kap.linear_assignment(cost, backend="kap")
-    np.testing.assert_array_equal(default.matches, native.matches)
+    np.testing.assert_array_equal(default.cliques, native.cliques)
     rows, cols = scipy_lsa(cost)
-    np.testing.assert_array_equal(default.matches, np.stack([rows, cols]).T)
+    np.testing.assert_array_equal(default.cliques, np.stack([rows, cols]).T)
 
 
 @pytest.mark.parametrize("maximize", (False, True))
@@ -164,7 +164,7 @@ def test_int64_jv_overflow_uses_exact_sap_fallback(maximize):
     assert sum(int(cost[i, j]) for i, j in zip(rows, cols)) == (2 * m if maximize else -2 * m)
     # The k-assignment entry point uses the same LAP implementation.
     result = kap.multiple_hungarian([cost], method="Am", maximize=maximize)
-    assert sum(result.matching_costs) == (2 * m if maximize else -2 * m)
+    assert sum(result.costs) == (2 * m if maximize else -2 * m)
 
 
 @pytest.mark.parametrize("maximize", (False, True))

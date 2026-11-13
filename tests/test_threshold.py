@@ -77,8 +77,8 @@ def validate(matrices, sizes, result, tau):
     table = edge_table(matrices, sizes)
     seen = []
     shifted = 0
-    assert len(result.matches) == len(result.matching_costs)
-    for row, reported in zip(result.matches, result.matching_costs):
+    assert len(result.cliques) == len(result.costs)
+    for row, reported in zip(result.cliques, result.costs):
         assert len(row) >= 2
         assert len({p for p, _ in row}) == len(row)
         costs = [edge(table, x, y) for x, y in combinations(row, 2)]
@@ -120,7 +120,7 @@ def test_no_improving_pairs(solve, options, maximize):
     matrices = instance(sizes, 31, np.int64)
     tau = 10 if maximize else -9
     result = solve(matrices, threshold=tau, maximize=maximize, return_free=True, **options)
-    assert result.matches == result.matching_costs == []
+    assert result.cliques == result.costs == []
     validate(matrices, sizes, result, tau)
     assert len(result.free) == sum(sizes)
 
@@ -142,7 +142,7 @@ def test_forbidden_pairs(solve, options, maximize, sizes):
         if len(sizes) == 2:
             assert score == pytest.approx(optimum)
         if all_forbidden:
-            assert result.matches == result.matching_costs == []
+            assert result.cliques == result.costs == []
             assert len(result.free) == sum(sizes)
 
 
@@ -178,13 +178,13 @@ def test_integer_threshold_and_none_compatibility(solve, options, maximize):
     original = [matrix.copy() for matrix in matrices]
     common = dict(maximize=maximize, return_free=True, **options)
     integral = solve(matrices, threshold=np.int64(2), **common)
-    assert integral.matching_costs
-    assert all(isinstance(cost, int) for cost in integral.matching_costs)
+    assert integral.costs
+    assert all(isinstance(cost, int) for cost in integral.costs)
     assert solve(matrices, threshold=2.0, **common) == integral
     with pytest.raises(ValueError, match="fractional threshold.*float64"):
         solve(matrices, threshold=2.5, **common)
     fractional = solve([m.astype(np.float64) for m in matrices], threshold=2.5, **common)
-    assert all(isinstance(cost, float) for cost in fractional.matching_costs)
+    assert all(isinstance(cost, float) for cost in fractional.costs)
     assert solve(matrices, threshold=None, **common) == solve(matrices, **common)
     for matrix, before in zip(matrices, original):
         np.testing.assert_array_equal(matrix, before)
@@ -247,12 +247,12 @@ def test_soft_gate_and_original_costs(maximize):
     sign = -1 if maximize else 1
     matrices = [np.array([[sign * c]], dtype=np.float64) for c in (1, 1, 12)]
     result = kap.ils(matrices, threshold=sign * 10, maximize=maximize, return_free=True)
-    assert result.matches == [[(0, 0), (1, 0), (2, 0)]]
-    assert result.matching_costs == [sign * 14]
+    assert result.cliques == [[(0, 0), (1, 0), (2, 0)]]
+    assert result.costs == [sign * 14]
     validate(matrices, (1, 1, 1), result, sign * 10)
     # Recost directly from originals, even if shifting erases their small magnitudes.
     result = kap.ils(matrices, threshold=sign * 1e20, maximize=maximize)
-    assert result.matching_costs == [sign * 14]
+    assert result.costs == [sign * 14]
 
 
 @pytest.mark.parametrize("solve,options", CASES)
@@ -260,8 +260,8 @@ def test_integral_threshold_preserves_large_integer_costs(solve, options):
     value = 2**54 + 1
     matrices = [np.array([[value]], dtype=np.int64)]
     result = solve(matrices, threshold=2**55, **options)
-    assert result.matching_costs == [value]
-    assert isinstance(result.matching_costs[0], int)
+    assert result.costs == [value]
+    assert isinstance(result.costs[0], int)
 
 
 @pytest.mark.parametrize("solve", (kap.local_search, kap.ils))
@@ -293,8 +293,8 @@ def test_fractional_real_threshold_rejected_before_rounding():
     with pytest.raises(ValueError, match="fractional threshold.*float64"):
         kap.ils(matrices, threshold=tau)
     result = kap.ils([m.astype(np.float64) for m in matrices], threshold=tau)
-    assert result.matching_costs == [0.0]
-    assert isinstance(result.matching_costs[0], float)
+    assert result.costs == [0.0]
+    assert isinstance(result.costs[0], float)
 
 
 @pytest.mark.parametrize("dtype", (np.int64, np.uint64, np.bool_))
@@ -305,5 +305,5 @@ def test_fractional_threshold_requires_explicit_float_input(dtype):
     # A mixed input already selects floating-point arithmetic independently of tau.
     matrices[0] = matrices[0].astype(np.float64)
     result = kap.ils(matrices, threshold=1.5)
-    assert result.matching_costs == [3.0]
-    assert isinstance(result.matching_costs[0], float)
+    assert result.costs == [3.0]
+    assert isinstance(result.costs[0], float)

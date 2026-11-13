@@ -37,7 +37,7 @@ def test_paper_example(paper_costs):
     assert [clique_cost(paper_costs, 3, [m]) for m in paper_matches] == [23, 4, 11]
     result = kap.k_assignment(paper_costs, algo="Em", **SOLVER_OPTIONS)
     assert_valid_assignment(paper_costs, (3, 3, 3), result)
-    assert sum(result.matching_costs) == 38
+    assert sum(result.costs) == 38
 
 
 @pytest.mark.parametrize("algo", ALGORITHMS)
@@ -84,7 +84,7 @@ def test_against_brute_force(tiny_instance, algo):
     costs, k, n, optimum = tiny_instance
     result = kap.k_assignment(costs, algo=algo, **SOLVER_OPTIONS)
     assert_valid_assignment(costs, (n,) * k, result)
-    true_cost = clique_cost(costs, k, result.matches)
+    true_cost = clique_cost(costs, k, result.cliques)
     assert true_cost >= optimum - 1e-8
     # Empirically verified on these four seeds; no general optimality claim.
     if algo in ("Bm", "Cm", "Em", "Fm"):
@@ -99,7 +99,7 @@ def test_maximize(instance_factory, algo, k, equal, dtype):
     maximum = kap.k_assignment(costs, algo=algo, maximize=True, **SOLVER_OPTIONS)
     assert_valid_assignment(costs, sizes, minimum)
     assert_valid_assignment(costs, sizes, maximum)
-    assert clique_cost(costs, k, maximum.matches) >= clique_cost(costs, k, minimum.matches) - 1e-8
+    assert clique_cost(costs, k, maximum.cliques) >= clique_cost(costs, k, minimum.cliques) - 1e-8
 
 
 @pytest.mark.parametrize("algo", ALGORITHMS)
@@ -113,7 +113,7 @@ def test_two_partites_equal_lap_optimum(
     rows, cols = scipy_assignment(costs[0], maximize=maximize)
     result = kap.k_assignment(costs, algo=algo, maximize=maximize, **SOLVER_OPTIONS)
     assert_valid_assignment(costs, shape, result)
-    assert np.isclose(clique_cost(costs, 2, result.matches), costs[0][rows, cols].sum())
+    assert np.isclose(clique_cost(costs, 2, result.cliques), costs[0][rows, cols].sum())
 
 
 @pytest.mark.parametrize("algo", ("Em", "Fm"))
@@ -126,8 +126,8 @@ def test_random_state_reproducibility(instance_factory, algo, dtype, maximize):
     second = kap.k_assignment(costs, algo=algo, **options)
     assert_valid_assignment(costs, (3,) * 4, first)
     assert_valid_assignment(costs, (3,) * 4, second)
-    assert first.matches == second.matches
-    np.testing.assert_array_equal(first.matching_costs, second.matching_costs)
+    assert first.cliques == second.cliques
+    np.testing.assert_array_equal(first.costs, second.costs)
     assert first.free == second.free
 
 
@@ -140,7 +140,7 @@ def test_backend_parity(instance_factory, algo, backend, seed):
     reference = kap.k_assignment(costs, algo=algo, **SOLVER_OPTIONS)
     result = kap.k_assignment(costs, algo=algo, **dict(SOLVER_OPTIONS, backend=backend))
     assert_valid_assignment(costs, (3,) * 4, result)
-    assert np.isclose(sum(result.matching_costs), sum(reference.matching_costs))
+    assert np.isclose(sum(result.costs), sum(reference.costs))
 
 
 @pytest.mark.parametrize(
@@ -218,7 +218,7 @@ def test_em_more_trials_never_worse():
     costs = random_instance(4, seed=5, n=6)
     one = kap.k_assignment(costs, algo="Em", n_trials=1, random_state=1)
     many = kap.k_assignment(costs, algo="Em", n_trials=10, random_state=1)
-    assert sum(many.matching_costs) <= sum(one.matching_costs)
+    assert sum(many.costs) <= sum(one.costs)
 
 
 def test_fm_stops_on_a_plateau(monkeypatch):

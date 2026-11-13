@@ -41,18 +41,18 @@ def test_reference_parity(algo, k, equal, dtype, maximize):
     oracle_matrices = [m.astype(np.int64) for m in matrices] if dtype == np.bool_ else matrices
     expected = _reference.k_assignment(oracle_matrices, **options)
     assert isinstance(actual, AssignmentResult)
-    assert actual.matches == expected.matches
+    assert actual.cliques == expected.cliques
     assert actual.free == expected.free
     if np.issubdtype(dtype, np.floating):
-        np.testing.assert_allclose(actual.matching_costs, expected.matching_costs, rtol=1e-6)
+        np.testing.assert_allclose(actual.costs, expected.costs, rtol=1e-6)
     else:
         assert actual == expected
     assert_valid_assignment(matrices, sizes, actual)
-    assert isinstance(actual.matches, list)
-    assert isinstance(actual.matching_costs, list)
+    assert isinstance(actual.cliques, list)
+    assert isinstance(actual.costs, list)
     assert isinstance(actual.free, list)
-    assert all(isinstance(match, list) for match in actual.matches)
-    assert all(isinstance(node, tuple) for match in actual.matches for node in match)
+    assert all(isinstance(match, list) for match in actual.cliques)
+    assert all(isinstance(node, tuple) for match in actual.cliques for node in match)
     assert all(isinstance(node, tuple) for node in actual.free)
 
 
@@ -68,12 +68,12 @@ def test_arbitrary_floating_costs(algo, k, equal, dtype, maximize):
     expected = _reference.k_assignment(matrices, **options)
     # Different summation orders can select tied merge trees and reorder the
     # cliques. Compare the same cliques and their associated costs in order.
-    actual_pairs = sorted(zip(actual.matches, actual.matching_costs))
-    expected_pairs = sorted(zip(expected.matches, expected.matching_costs))
+    actual_pairs = sorted(zip(actual.cliques, actual.costs))
+    expected_pairs = sorted(zip(expected.cliques, expected.costs))
     assert [m for m, _ in actual_pairs] == [m for m, _ in expected_pairs]
     np.testing.assert_allclose([c for _, c in actual_pairs], [c for _, c in expected_pairs],
                                rtol=1e-6, atol=1e-5)
-    np.testing.assert_allclose(sum(actual.matching_costs), sum(expected.matching_costs),
+    np.testing.assert_allclose(sum(actual.costs), sum(expected.costs),
                                rtol=1e-6, atol=1e-5)
     sizes = [matrices[0].shape[0]] + [m.shape[1] for m in matrices[:k - 1]]
     assert_valid_assignment(matrices, sizes, actual)
@@ -199,8 +199,8 @@ def test_layouts_and_native_byte_order(layout, dtype):
         matrices = strided(matrices, layout)
     actual = kap.k_assignment(matrices, algo="Am", return_free=True)
     expected = _reference.k_assignment(matrices, algo="Am", return_free=True)
-    assert actual.matches == expected.matches
-    np.testing.assert_allclose(actual.matching_costs, expected.matching_costs, rtol=1e-6)
+    assert actual.cliques == expected.cliques
+    np.testing.assert_allclose(actual.costs, expected.costs, rtol=1e-6)
     assert_valid_assignment(matrices, (2, 3, 4, 2), actual)
 
 

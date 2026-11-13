@@ -10,8 +10,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         MatrixView::from_row_major(&c12, 3, 3)?,
     ];
     let result = k_assignment(&costs, Algo::Bm, &Options::default())?;
-    println!("matches = {:?}", result.cliques);
-    println!("matching_costs = {:?}", result.costs);
+    println!("cliques = {:?}", result.cliques);
+    println!("costs = {:?}", result.costs);
     println!("free = {:?}", result.free);
     Ok(())
 }

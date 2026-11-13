@@ -49,7 +49,7 @@ where
 
 ## Returns
 
-Python returns `AssignmentResult(matches, matching_costs, free)`. Each match is a clique of `(part, vertex)` pairs. Its cost is the sum of its pairwise edges. `free` is `None` unless requested; it then lists singleton vertices.
+Python returns `AssignmentResult(cliques, costs, free)`. Each clique contains `(part, vertex)` pairs, and its cost is the sum of its pairwise edges. `result.cost` gives the total cost. `free` is `None` unless requested; it then lists singleton vertices.
 
 Rust returns `Result<KSolution<T::Acc>, KapError>`. `cliques` and `costs` correspond to the Python fields. `cost` is their sum, and `free` always lists singletons. Singleton vertices are excluded from both languages' clique lists.
 
