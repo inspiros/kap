@@ -3,9 +3,13 @@ name: Build
 on:
   push:
     branches: [master]
-    tags: ['v*']
   pull_request:
   workflow_call:
+
+# A newer push to the same branch or PR cancels the older build.
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   sdist:
@@ -30,13 +34,16 @@ jobs:
             target: x86_64
           - os: ubuntu-latest
             target: aarch64
-          - os: macos-15-intel
+          # Intel macOS runners are scarce and often queue for hours;
+          # cross-compile the x86_64 wheel on Apple silicon instead.
+          - os: macos-latest
             target: x86_64
           - os: macos-latest
             target: aarch64
           - os: windows-latest
             target: x64
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       # abi3-py310 wheels: any newer interpreter builds them
