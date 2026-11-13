@@ -5,15 +5,20 @@ use std::time::Instant;
 use super::{Options, Rng, better, dv, merge::am};
 use crate::{Acc, Cost, KapError, LapSolver, Quotient};
 
+/// Consecutive failed perturbations before the chain accepts a non-improving
+/// step. Tuned on random-cost instances (k = 3..6): 50 beat 20, 30, 100 and 200
+/// on balance across 1000-iteration and 2-second budgets.
+const PATIENCE: usize = 50;
+
 fn perturb<A: Acc + Cost<Acc = A>>(
     root: &Quotient<A>,
     current: &Quotient<A>,
     anchor: usize,
+    p: usize,
     rng: &mut Rng,
 ) -> Result<Quotient<A>, KapError> {
     let k = root.n_parts();
     let n = current.n_nodes(0);
-    let p = (n.div_ceil(25) + 1).clamp(2, n);
     let mut chosen: Vec<_> = (0..n).collect();
     // Partial Fisher–Yates samples distinct nodes uniformly.
     for i in 0..p {
@@ -62,17 +67,35 @@ pub(crate) fn ils<A: Acc + Cost<Acc = A>>(
     let chain = |t: usize, solver: &mut LapSolver<A>| -> Result<Quotient<A>, KapError> {
         let mut rng = Rng::new(opts.seed, t as u64);
         let mut current = start.clone();
+        let mut best = start.clone();
+        let n = current.n_nodes(0);
+        let p = (n.div_ceil(25) + 1).clamp(2, n);
+        let mut fails = 0;
         for _ in 0..opts.max_iter {
             if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                 break;
             }
-            let candidate = perturb(root, &current, anchor, &mut rng)?;
+            let candidate = perturb(root, &current, anchor, p, &mut rng)?;
             let candidate =
                 dv::improve(root, candidate, opts.dv, dv::CONVERGE, opts.sense, solver)?;
             if better(candidate.score, current.score, opts.sense) {
                 current = candidate;
+                fails = 0;
+                if better(current.score, best.score, opts.sense) {
+                    best = current.clone();
+                }
+            } else {
+                fails += 1;
+                // Escape stagnation: after PATIENCE consecutive failures step
+                // to the latest candidate even though it is not better. The
+                // best solution seen is kept separately and returned.
+                if fails >= PATIENCE {
+                    current = candidate;
+                    fails = 0;
+                }
             }
         }
+        let current = best;
         Ok(current)
     };
     #[cfg(feature = "rayon")]

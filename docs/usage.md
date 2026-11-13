@@ -38,7 +38,7 @@ Partite sizes may differ.
 ```python
 from kap import k_assignment
 
-res = k_assignment(cost_matrices, algo="Cm")
+res = k_assignment(cost_matrices)  # algo="ils" by default
 res.matches         # list of matches, each a list of (partite, node) tuples
 res.matching_costs  # cost of each match: sum over all pairs of its members
 res.free            # with return_free=True, the unmatched vertices
@@ -49,7 +49,7 @@ different sizes, some matches are incomplete.
 
 | Argument | Meaning |
 |---|---|
-| `algo` | `"Am"` to `"Fm"`, plus `"Shift"`, `"1DV"`, `"sDV"` and `"ils"`; see [Algorithms](algorithms.md). Default `"Cm"`; new methods require `backend="kap"` |
+| `algo` | `"Am"` to `"Fm"`, plus `"Shift"`, `"1DV"`, `"sDV"` and `"ils"`; see [Algorithms](algorithms.md). Default `"ils"` with `backend="kap"`, else `"Cm"`; new methods require `backend="kap"` |
 | `refine` | optionally apply `"1DV"` or `"sDV"` after the selected algorithm, or select the DV neighbourhood inside ILS (default 1DV); requires `backend="kap"` |
 | `max_iter` | move cap for Cm, Em and Fm; sweep cap for 1DV, sDV and other algorithms with `refine`; perturbation cap per ILS chain |
 | `n_trials` | number of independent trials for Em or chains for ILS (positive) |

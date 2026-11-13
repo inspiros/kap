@@ -113,7 +113,11 @@ def test_return_free_false(paper_costs, algo):
 def test_signature_docstring_and_linear_assignment_unchanged():
     public = inspect.signature(kap.k_assignment)
     reference = inspect.signature(_reference.k_assignment)
-    assert list(public.parameters.values())[:-3] == list(reference.parameters.values())
+    shared = list(public.parameters.values())[:-3]
+    assert [p.name for p in shared] == list(reference.parameters)
+    assert [p.default for p in shared if p.name != "algo"] == \
+        [p.default for p in reference.parameters.values() if p.name != "algo"]
+    assert public.parameters["algo"].default is None
     assert list(public.parameters)[-3:] == ["refine", "time_limit", "population"]
     assert public.parameters["population"].default is None
     assert public.parameters["time_limit"].default is None

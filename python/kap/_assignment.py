@@ -32,7 +32,7 @@ def _seed(random_state):
 
 
 def k_assignment(cost_matrices: Sequence[Array2DLike],
-                 algo: str = "Cm",
+                 algo: Optional[str] = None,
                  max_iter: int = 100,
                  n_trials: int = 1,
                  maximize: bool = False,
@@ -57,7 +57,9 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
             ILS perturbs an incumbent and runs DV to convergence at each step.
             Memetic evolves a population of DV local optima from Shift.
             The new algorithms require backend="kap" (native core).
-            sDV supports at most 16 partites. Defaults to "Cm".
+            sDV supports at most 16 partites. Defaults to None: "ils" with
+            backend="kap" (native core), otherwise "Cm". ILS is randomised;
+            pass an int random_state for reproducible results.
         max_iter (int): Maximum number of moves for Cm, Em (per trial) and Fm.
             For memetic this caps generations (zero returns the best of the first
             generation). For ILS this caps perturbations per chain; for 1DV, sDV and other
@@ -102,6 +104,14 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         [1] Multiple Hungarian Method for k-Assignment Problem.
             *Mathematics*, 8(11), 2050, November 2020, :doi:`10.3390/math8112050`
     """
+    if algo is None:
+        algo = "Cm"
+        if isinstance(backend, str) and backend.lower() == "kap":
+            try:
+                from ._core import k_assignment as _  # noqa: F401
+                algo = "ils"
+            except ImportError:
+                pass
     aliases = {"shift": "shift", "shiftam": "shift", "1dv": "1dv",
                "dv1": "1dv", "sdv": "sdv", "dvs": "sdv", "ils": "ils",
                "memetic": "memetic"}

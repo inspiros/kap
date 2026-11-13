@@ -75,6 +75,9 @@ Full documentation is in [docs](docs/index.md).
 - **Shift and dimensionwise variation search.** With ``backend="kap"``, ``algo`` accepts
   ``"Shift"``, ``"1DV"`` and ``"sDV"``; ``refine`` can apply ``"1DV"`` or ``"sDV"`` after
   the selected algorithm. See [Algorithms](docs/algorithms.md) for their strategies and limits.
+- **New default algorithm.** With ``backend="kap"`` the default ``algo`` is now ``"ils"`` instead of
+  $\text{C}_m$. It finds clearly lower costs on non-metric instances but is randomised; pass
+  ``algo="Cm"`` for the previous deterministic behaviour.
 - **Iterated local search.** Native ``algo="ils"`` perturbs and reoptimizes with DV; supports seeded parallel chains and an optional ``time_limit`` (see [Algorithms](docs/algorithms.md)).
 - **Memetic search.** Native ``algo="memetic"`` evolves DV local optima with mutation and common-clique crossover, using ``population`` and generation or time budgets (see [Algorithms](docs/algorithms.md)).
 - **Algorithms follow the paper.** $\text{C}_m$ is pure steepest descent, $\text{E}_m$ runs independent
@@ -132,9 +135,10 @@ There are a few things to note about its parameters:
 - ``cost_matrices``: Sequence of $n (n - 1) / 2$ 2D cost matrices of pairwise matching costs between $n$ partites
   (might not be able to be represented as a 3D ``np.ndarray`` since partites can have different number of vertices)
   ordered as in ``itertools.combination(n, 2)``. For example, $[C_{01}, C_{02}, C_{03}, C_{12}, C_{13}, C_{23}]$.
-- ``algo``: Select ``"Am", "Bm", "Cm", "Dm", "Em", "Fm", "Shift", "1DV"`` or ``"sDV"``.
-  $\text{C}_m$ is set to be the default as it usually performs as good as random approaches while having a
-  deterministic behavior.
+- ``algo``: Select ``"Am", "Bm", "Cm", "Dm", "Em", "Fm", "Shift", "1DV", "sDV", "ils"`` or ``"memetic"``.
+  The default is ``"ils"`` with the native backend (randomised: pass ``random_state`` for reproducible
+  results) and $\text{C}_m$ with other backends. Use ``"memetic"`` or ``"ils"`` with ``time_limit``
+  for the best result within a time budget.
 - ``refine``: optionally select ``"1DV"`` or ``"sDV"`` to improve the result after ``algo``; requires ``backend="kap"``.
 - ``max_iter``, ``n_trials``, ``random_state``: control $\text{C}_m$, $\text{E}_m$ and $\text{F}_m$;
   pass an int (or a seeded ``RandomState``/``Generator``) to ``random_state`` for reproducible results.

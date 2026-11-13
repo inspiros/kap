@@ -300,3 +300,13 @@ def test_memetic_sdv_cap():
     for solve in (kap.k_assignment, _core.k_assignment):
         with pytest.raises(ValueError, match="k <= 16"):
             solve(matrices, algo="memetic", refine=refine, max_iter=0)
+
+
+def test_default_algo_is_ils_natively_and_cm_otherwise(monkeypatch):
+    matrices = random_instance(4, sizes=[6, 6, 6, 6], seed=3, dtype=np.int64)
+    assert kap.k_assignment(matrices, random_state=1) == kap.k_assignment(
+        matrices, algo="ils", random_state=1)
+    assert kap.k_assignment(matrices, backend="scipy") == kap.k_assignment(
+        matrices, algo="Cm", backend="scipy")
+    monkeypatch.setitem(sys.modules, "kap._core", None)
+    assert kap.k_assignment(matrices) == kap.k_assignment(matrices, algo="Cm")

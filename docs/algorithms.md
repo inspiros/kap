@@ -60,8 +60,11 @@ multidimensional assignment problem,” *Journal of Heuristics* 17, 2011.
 ## Iterated local search (ILS)
 
 `algo="ils"` starts with Am followed by DV to convergence. Each step perturbs
-some nodes of the incumbent, runs DV to convergence again, and keeps the
-candidate only if its score strictly improves. The perturbation chooses
+some nodes of the current solution, runs DV to convergence again, and moves
+to the candidate only if its score strictly improves. After 50 consecutive
+steps without an improvement it moves to the latest candidate anyway, to
+leave a region where it is stuck; the best solution seen is what is returned.
+ILS is the default `algo` with `backend="kap"`. The perturbation chooses
 `ceil(N/25) + 1` distinct nodes, clamped to `2..N`, where `N` is the number of
 solution nodes. It fixes the first largest original partite and independently
 shuffles every other partite's entries, including absent vertices, among the
