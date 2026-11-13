@@ -68,12 +68,58 @@ def _budget(value, time_limit, name):
     return (sys.maxsize if time_limit is not None else 100) if value is None else _integer(value, name, 0)
 
 
+def _initial_cliques(initial, sizes):
+    if isinstance(initial, AssignmentResult):
+        initial = initial.matches
+    try:
+        cliques = [list(clique) for clique in initial]
+    except TypeError:
+        raise ValueError("initial must be an iterable of cliques of (part, vertex) pairs") from None
+    used = set()
+    result = []
+    for clique in cliques:
+        if not clique:
+            raise ValueError("initial contains an empty clique")
+        parts = set()
+        row = []
+        for node in clique:
+            try:
+                part, vertex = node
+            except (TypeError, ValueError):
+                raise ValueError("initial vertices must be (part, vertex) pairs") from None
+            if any(isinstance(v, (bool, np.bool_)) or not isinstance(v, (int, np.integer))
+                   for v in (part, vertex)):
+                raise ValueError("initial part and vertex indices must be integers")
+            part, vertex = int(part), int(vertex)
+            if not 0 <= part < len(sizes):
+                raise ValueError(f"initial part index {part} is out of range")
+            if not 0 <= vertex < sizes[part]:
+                raise ValueError(f"initial vertex index {vertex} is out of range for part {part}")
+            if (part, vertex) in used:
+                raise ValueError(f"initial vertex {(part, vertex)} is used more than once")
+            if part in parts:
+                raise ValueError(f"initial clique contains more than one vertex of part {part}")
+            parts.add(part)
+            used.add((part, vertex))
+            row.append((part, vertex))
+        result.append(row)
+    expected = max(sizes)
+    actual = len(result) + sum(sizes) - len(used)
+    if actual != expected:
+        raise ValueError(f"initial must be a complete solution: {expected} nodes expected, {actual} given")
+    return result
+
+
 def _native(cost_matrices, algo, *, max_iter=100, n_trials=1, maximize=False,
-            return_free=False, random_state=None, refine=None, time_limit=None, population=None):
+            return_free=False, random_state=None, refine=None, time_limit=None, population=None,
+            initial=None):
     native = _core()
     if native is None:
         raise RuntimeError("the native core is required")
-    cost_matrices, _ = _validate_cost_matrices(cost_matrices)
+    cost_matrices, n_partites = _validate_cost_matrices(cost_matrices)
+    if initial is not None:
+        sizes = [cost_matrices[0].shape[0]] + [m.shape[1] for m in cost_matrices[:n_partites - 1]]
+        initial = _initial_cliques(initial, sizes)
     for matrix in cost_matrices:
         if matrix.dtype.kind not in "biuf":
             raise TypeError(f"unsupported cost matrix dtype {matrix.dtype}")
@@ -87,12 +133,12 @@ def _native(cost_matrices, algo, *, max_iter=100, n_trials=1, maximize=False,
     matrices = [np.asarray(matrix, dtype=dtype) for matrix in cost_matrices]
     matches, costs, free = native(matrices, algo, maximize=bool(maximize), max_iter=max_iter,
                                   n_trials=n_trials, seed=_seed(random_state), refine=refine,
-                                  time_limit=time_limit, population=population)
+                                  time_limit=time_limit, population=population, initial=initial)
     return AssignmentResult(matches, costs, free if return_free else None)
 
 
 def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborhood="1dv",
-        maximize=False, return_free=False, random_state=None):
+        maximize=False, return_free=False, random_state=None, initial=None):
     """Run iterated local search, perturbing and reoptimizing independent chains.
 
     The best solution found is returned. The native core is required.
@@ -106,6 +152,11 @@ def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborho
         maximize: Maximize the score instead of minimizing it.
         return_free: Include unmatched vertices in the result.
         random_state: None, integer, RandomState or Generator; use an integer for reproducibility.
+        initial: Iterable of cliques of (part, vertex) pairs, or an AssignmentResult
+            whose matches are used, replacing the Am start. Must be a complete
+            solution such as a previous result: after unlisted vertices are added
+            as singletons, there must be exactly max(part sizes) nodes.
+            DV refines this start before all chains.
 
     Returns:
         AssignmentResult: Matches, their costs, and optionally free vertices.
@@ -116,7 +167,7 @@ def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborho
     chains = _integer(n_chains, "n_chains", 1)
     return _native(cost_matrices, "ils", max_iter=iterations, n_trials=chains,
                    time_limit=time_limit, refine=_neighborhood(neighborhood), maximize=maximize,
-                   return_free=return_free, random_state=random_state)
+                   return_free=return_free, random_state=random_state, initial=initial)
 
 
 def memetic(cost_matrices, *, generations=None, population=None, time_limit=None,
@@ -150,7 +201,7 @@ def memetic(cost_matrices, *, generations=None, population=None, time_limit=None
                    return_free=return_free, random_state=random_state)
 
 
-def local_search(cost_matrices, *, neighborhood="1dv", start="Am", max_sweeps=100,
+def local_search(cost_matrices, *, neighborhood="1dv", start=None, initial=None, max_sweeps=100,
                  maximize=False, return_free=False):
     """Build a deterministic starting solution and improve it with DV sweeps.
 
@@ -159,7 +210,12 @@ def local_search(cost_matrices, *, neighborhood="1dv", start="Am", max_sweeps=10
     Args:
         cost_matrices: Pairwise cost matrices in combinations order.
         neighborhood: "1dv" or "sdv" (also "dv1" or "dvs"), case-insensitive.
-        start: Starting method "Am", "Bm", "Dm", or "Shift", case-insensitive.
+        start: Starting method "Am", "Bm", "Dm", or "Shift", case-insensitive;
+            None selects Am. Cannot be supplied together with initial.
+        initial: Iterable of cliques of (part, vertex) pairs, or an AssignmentResult
+            whose matches are used, replacing the constructed start. Must be a complete
+            solution such as a previous result: after unlisted vertices are added
+            as singletons, there must be exactly max(part sizes) nodes.
         max_sweeps: Nonnegative maximum number of sweeps.
         maximize: Maximize the score instead of minimizing it.
         return_free: Include unmatched vertices in the result.
@@ -170,10 +226,15 @@ def local_search(cost_matrices, *, neighborhood="1dv", start="Am", max_sweeps=10
     This method is deterministic and needs no random seed.
     """
     starts = {"am": "a", "bm": "b", "dm": "d", "shift": "shift"}
+    if start is not None and initial is not None:
+        raise ValueError("start and initial cannot both be supplied")
+    if start is None:
+        start = "Am"
     if not isinstance(start, str) or start.lower() not in starts:
         raise ValueError("start must be Am | Bm | Dm | Shift")
     return _native(cost_matrices, starts[start.lower()], max_iter=_integer(max_sweeps, "max_sweeps", 0),
-                   refine=_neighborhood(neighborhood), maximize=maximize, return_free=return_free)
+                   refine=_neighborhood(neighborhood), maximize=maximize, return_free=return_free,
+                   initial=initial)
 
 
 def multiple_hungarian(cost_matrices, method="Cm", *, max_iter=100, n_trials=1,

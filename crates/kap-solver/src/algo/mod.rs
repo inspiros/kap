@@ -9,6 +9,9 @@ mod merge;
 mod pairfix;
 
 #[cfg(test)]
+mod initial_tests;
+
+#[cfg(test)]
 pub(crate) use merge::bm_path;
 pub(crate) use merge::{am, bm, dm, shift};
 pub(crate) use pairfix::{cm, em, fm};
@@ -102,7 +105,87 @@ pub fn k_assignment<T: Cost>(
 where
     T::Acc: Cost<Acc = T::Acc>,
 {
+    run(mats, None, algo, opts)
+}
+
+/// Improve supplied cliques instead of constructing a starting solution.
+///
+/// Each clique contains `(part, vertex)` pairs, with at most one vertex per
+/// part. Unlisted vertices become singleton nodes. Supports deterministic
+/// starts (Am, Bm, Dm, Shift, Dv1, DvS) and ILS; other algorithms reject
+/// `initial`. Deterministic starts are replaced, then `opts.refine` is applied.
+/// The initial solution must be complete: after adding singleton nodes its
+/// node count must equal `max(part sizes)`, as in a previous solver result.
+pub fn k_assignment_from<T: Cost>(
+    mats: &[MatrixView<'_, T>],
+    cliques: &[Vec<(usize, usize)>],
+    algo: Algo,
+    opts: &Options,
+) -> Result<KSolution<T::Acc>, KapError>
+where
+    T::Acc: Cost<Acc = T::Acc>,
+{
+    run(mats, Some(cliques), algo, opts)
+}
+
+fn from_cliques<A: Acc + Cost<Acc = A>>(
+    root: &Quotient<A>,
+    cliques: &[Vec<(usize, usize)>],
+) -> Result<Quotient<A>, KapError> {
+    use crate::kpartite::NONE;
+    let k = root.n_parts();
+    let mut used: Vec<_> = (0..k).map(|p| vec![false; root.n_nodes(p)]).collect();
+    let mut nodes = Vec::new();
+    for clique in cliques {
+        if clique.is_empty() {
+            return Err(KapError::BadMatching);
+        }
+        let mut row = vec![NONE; k];
+        for &(p, v) in clique {
+            let seen = used
+                .get_mut(p)
+                .and_then(|part| part.get_mut(v))
+                .ok_or(KapError::BadMatching)?;
+            if *seen || row[p] != NONE {
+                return Err(KapError::BadMatching);
+            }
+            *seen = true;
+            row[p] = v as u32;
+        }
+        nodes.extend(row);
+    }
+    for (p, part) in used.iter().enumerate() {
+        for (v, &seen) in part.iter().enumerate() {
+            if !seen {
+                let mut row = vec![NONE; k];
+                row[p] = v as u32;
+                nodes.extend(row);
+            }
+        }
+    }
+    let expected = (0..k).map(|p| root.n_nodes(p)).max().unwrap();
+    let actual = nodes.len() / k;
+    if actual != expected {
+        return Err(KapError::IncompleteInitial { expected, actual });
+    }
+    // Every vertex of a largest part occurs exactly once across N nodes, so
+    // each node has a largest-part vertex. This preserves DV/ILS's invariant.
+    Quotient::from_nodes(root, nodes)
+}
+
+fn run<T: Cost>(
+    mats: &[MatrixView<'_, T>],
+    initial: Option<&[Vec<(usize, usize)>]>,
+    algo: Algo,
+    opts: &Options,
+) -> Result<KSolution<T::Acc>, KapError>
+where
+    T::Acc: Cost<Acc = T::Acc>,
+{
     let problem = KPartite::new(mats)?;
+    if initial.is_some() && matches!(algo, Algo::Cm | Algo::Em | Algo::Fm | Algo::Memetic) {
+        return Err(KapError::BadOption("initial"));
+    }
     if matches!(algo, Algo::Em | Algo::Fm) && opts.max_iter == 0 {
         return Err(KapError::BadOption("max_iter"));
     }
@@ -121,18 +204,12 @@ where
     }
     let root = Quotient::root(&problem);
     let mut solver = LapSolver::new();
-    let mut q = match algo {
-        Algo::Am => am(&root, opts.sense, &mut solver)?,
-        Algo::Bm => bm(&root, opts.sense, &mut solver)?,
-        Algo::Dm => dm(&root, opts.sense, &mut solver)?,
-        Algo::Cm => cm(&root, opts, &mut solver)?,
-        Algo::Em => em(&root, opts, &mut solver)?,
-        Algo::Fm => fm(&root, opts, &mut solver)?,
-        Algo::Ils => ils::ils(&root, opts, &mut solver)?,
-        Algo::Memetic => memetic::memetic(&root, opts, &mut solver)?,
-        Algo::Shift => shift(&root, opts.sense, &mut solver)?,
-        Algo::Dv1 | Algo::DvS => {
-            let start = am(&root, opts.sense, &mut solver)?;
+    let start = initial
+        .map(|cliques| from_cliques(&root, cliques))
+        .transpose()?;
+    let mut q = match (algo, start) {
+        (Algo::Ils, Some(start)) => ils::ils_from(&root, start, opts, &mut solver)?,
+        (Algo::Dv1 | Algo::DvS, Some(start)) => {
             let kind = if algo == Algo::Dv1 {
                 Dv::One
             } else {
@@ -140,6 +217,27 @@ where
             };
             dv::improve(&root, start, kind, opts.max_iter, opts.sense, &mut solver)?
         }
+        (_, Some(start)) => start,
+        (_, None) => match algo {
+            Algo::Am => am(&root, opts.sense, &mut solver)?,
+            Algo::Bm => bm(&root, opts.sense, &mut solver)?,
+            Algo::Dm => dm(&root, opts.sense, &mut solver)?,
+            Algo::Cm => cm(&root, opts, &mut solver)?,
+            Algo::Em => em(&root, opts, &mut solver)?,
+            Algo::Fm => fm(&root, opts, &mut solver)?,
+            Algo::Ils => ils::ils(&root, opts, &mut solver)?,
+            Algo::Memetic => memetic::memetic(&root, opts, &mut solver)?,
+            Algo::Shift => shift(&root, opts.sense, &mut solver)?,
+            Algo::Dv1 | Algo::DvS => {
+                let start = am(&root, opts.sense, &mut solver)?;
+                let kind = if algo == Algo::Dv1 {
+                    Dv::One
+                } else {
+                    Dv::Subsets
+                };
+                dv::improve(&root, start, kind, opts.max_iter, opts.sense, &mut solver)?
+            }
+        },
     };
     if let Some(kind) = opts.refine {
         q = dv::improve(&root, q, kind, opts.max_iter, opts.sense, &mut solver)?;

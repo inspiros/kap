@@ -9,7 +9,7 @@ pub mod algo;
 pub mod kpartite;
 pub mod lap;
 
-pub use algo::{Algo, Dv, Options, k_assignment};
+pub use algo::{Algo, Dv, Options, k_assignment, k_assignment_from};
 pub use kpartite::{KPartite, KSolution, KapError, Quotient};
 
 pub use lap::{

@@ -48,6 +48,15 @@ pub(crate) fn ils<A: Acc + Cost<Acc = A>>(
     solver: &mut LapSolver<A>,
 ) -> Result<Quotient<A>, KapError> {
     let start = am(root, opts.sense, solver)?;
+    ils_from(root, start, opts, solver)
+}
+
+pub(crate) fn ils_from<A: Acc + Cost<Acc = A>>(
+    root: &Quotient<A>,
+    start: Quotient<A>,
+    opts: &Options,
+    solver: &mut LapSolver<A>,
+) -> Result<Quotient<A>, KapError> {
     let start = dv::improve(root, start, opts.dv, dv::CONVERGE, opts.sense, solver)?;
     if start.n_nodes(0) < 2 {
         return Ok(start);

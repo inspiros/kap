@@ -25,6 +25,13 @@ pub enum KapError {
     },
     /// Invalid part positions, vertex indices, or repeated matching vertices.
     BadMatching,
+    /// The supplied initial solution does not have max(partite sizes) nodes.
+    IncompleteInitial {
+        /// Required number of nodes, counting singleton vertices.
+        expected: usize,
+        /// Actual number after adding all unlisted vertices as singletons.
+        actual: usize,
+    },
     /// A partite is too large for u32 vertex identifiers.
     TooManyVertices(usize),
     /// Constituent LAP error.
@@ -52,9 +59,14 @@ impl fmt::Display for KapError {
                 "matrix {matrix}: partite {partite} has size {actual}, expected {expected}"
             ),
             Self::BadMatching => write!(f, "invalid part positions or matching"),
+            Self::IncompleteInitial { expected, actual } => write!(
+                f,
+                "initial must be a complete solution: {expected} nodes expected, {actual} given"
+            ),
             Self::TooManyVertices(n) => write!(f, "partite size {n} exceeds u32 vertex capacity"),
             Self::Lap(e) => e.fmt(f),
             Self::Unsupported(what) => f.write_str(what),
+            Self::BadOption("initial") => write!(f, "initial is unsupported for this algorithm"),
             Self::BadOption(name) => write!(f, "{name} must be a positive integer"),
         }
     }

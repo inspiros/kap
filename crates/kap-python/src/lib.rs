@@ -126,6 +126,7 @@ fn try_k_dtype<'py, T>(
     costs: &[Bound<'py, PyAny>],
     algo: Algo,
     opts: &Options,
+    initial: Option<&[Vec<(usize, usize)>]>,
 ) -> Option<PyResult<KResult<T::Acc>>>
 where
     T: Cost + Element,
@@ -162,22 +163,25 @@ where
         })
         .collect::<Result<Vec<_>, _>>();
     Some(views.map_err(lap_error).and_then(|views| {
-        py.detach(|| kap::k_assignment(&views, algo, opts))
-            .map(
-                |KSolution {
-                     cliques,
-                     costs,
-                     free,
-                     ..
-                 }| (cliques, costs, free),
-            )
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+        py.detach(|| match initial {
+            Some(cliques) => kap::k_assignment_from(&views, cliques, algo, opts),
+            None => kap::k_assignment(&views, algo, opts),
+        })
+        .map(
+            |KSolution {
+                 cliques,
+                 costs,
+                 free,
+                 ..
+             }| (cliques, costs, free),
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))
     }))
 }
 
 /// Solve a k-partite problem natively; return Python lists.
 #[pyfunction]
-#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0, refine = None, time_limit = None, population = None))]
+#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0, refine = None, time_limit = None, population = None, initial = None))]
 #[allow(clippy::too_many_arguments)]
 fn k_assignment<'py>(
     py: Python<'py>,
@@ -190,7 +194,17 @@ fn k_assignment<'py>(
     refine: Option<&str>,
     time_limit: Option<f64>,
     population: Option<usize>,
+    initial: Option<&Bound<'py, PyAny>>,
 ) -> PyResult<Py<PyAny>> {
+    let initial = initial
+        .map(|value| {
+            value.extract::<Vec<Vec<(usize, usize)>>>().map_err(|_| {
+                PyValueError::new_err(
+                    "initial must contain cliques of nonnegative integer (part, vertex) pairs",
+                )
+            })
+        })
+        .transpose()?;
     let algo = match algo.to_ascii_lowercase().as_str() {
         "a" | "am" => Algo::Am,
         "b" | "bm" => Algo::Bm,
@@ -255,10 +269,10 @@ fn k_assignment<'py>(
         time_limit,
         population,
     };
-    if let Some(result) = try_k_dtype::<f64>(py, &cost_matrices, algo, &opts) {
+    if let Some(result) = try_k_dtype::<f64>(py, &cost_matrices, algo, &opts, initial.as_deref()) {
         return Ok(result?.into_pyobject(py)?.unbind().into_any());
     }
-    if let Some(result) = try_k_dtype::<i64>(py, &cost_matrices, algo, &opts) {
+    if let Some(result) = try_k_dtype::<i64>(py, &cost_matrices, algo, &opts, initial.as_deref()) {
         return Ok(result?.into_pyobject(py)?.unbind().into_any());
     }
     Err(PyTypeError::new_err(
