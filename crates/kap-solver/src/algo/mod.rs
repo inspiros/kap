@@ -4,6 +4,7 @@ use crate::{Acc, Cost, KPartite, KSolution, KapError, LapSolver, MatrixView, Quo
 
 pub(crate) mod dv;
 pub(crate) mod ils;
+pub(crate) mod memetic;
 mod merge;
 mod pairfix;
 
@@ -45,6 +46,8 @@ pub enum Algo {
     DvS,
     /// Iterated local search over DV, with independent seeded chains.
     Ils,
+    /// Population of DV local optima with mutation and common-clique crossover.
+    Memetic,
 }
 
 /// Algorithm settings.
@@ -52,18 +55,20 @@ pub enum Algo {
 pub struct Options {
     /// Optimization direction.
     pub sense: Sense,
-    /// Move limit of Cm, Em (per trial) and Fm; sweep limit of DV; perturbations per ILS chain.
+    /// Move limit of Cm, Em (per trial) and Fm; DV sweeps; ILS perturbations; memetic generations.
     pub max_iter: usize,
     /// Number of independent Em trials or ILS chains.
     pub n_trials: usize,
-    /// Seed of Em, Fm and ILS; equal seeds and iteration budgets give equal results.
+    /// Seed of Em, Fm, ILS and Memetic; iteration budgets are reproducible.
     pub seed: u64,
     /// Optional DV search after the selected algorithm.
     pub refine: Option<Dv>,
-    /// Neighbourhood used within ILS.
+    /// Neighbourhood used within ILS and Memetic.
     pub dv: Dv,
-    /// Optional ILS time budget, checked between perturbations after the start.
+    /// Optional time budget for ILS (after the start) or Memetic (from entry).
     pub time_limit: Option<std::time::Duration>,
+    /// Memetic population size; None uses 12 or time-based population sizing.
+    pub population: Option<usize>,
 }
 
 impl Default for Options {
@@ -76,6 +81,7 @@ impl Default for Options {
             refine: None,
             dv: Dv::One,
             time_limit: None,
+            population: None,
         }
     }
 }
@@ -103,9 +109,12 @@ where
     if matches!(algo, Algo::Em | Algo::Ils) && opts.n_trials == 0 {
         return Err(KapError::BadOption("n_trials"));
     }
+    if algo == Algo::Memetic && opts.population.is_some_and(|m| m < 2) {
+        return Err(KapError::BadOption("population"));
+    }
     if (algo == Algo::DvS
         || opts.refine == Some(Dv::Subsets)
-        || (algo == Algo::Ils && opts.dv == Dv::Subsets))
+        || (matches!(algo, Algo::Ils | Algo::Memetic) && opts.dv == Dv::Subsets))
         && problem.sizes().len() > 16
     {
         return Err(KapError::Unsupported("sDV requires k <= 16"));
@@ -120,6 +129,7 @@ where
         Algo::Em => em(&root, opts, &mut solver)?,
         Algo::Fm => fm(&root, opts, &mut solver)?,
         Algo::Ils => ils::ils(&root, opts, &mut solver)?,
+        Algo::Memetic => memetic::memetic(&root, opts, &mut solver)?,
         Algo::Shift => shift(&root, opts.sense, &mut solver)?,
         Algo::Dv1 | Algo::DvS => {
             let start = am(&root, opts.sense, &mut solver)?;
@@ -158,6 +168,11 @@ impl Rng {
     /// Uniform in `0..n` (n >= 1), by multiply-shift.
     pub(crate) fn below(&mut self, n: usize) -> usize {
         ((self.next() as u128 * n as u128) >> 64) as usize
+    }
+
+    /// Uniform in [0, 1), using the high 53 bits.
+    pub(crate) fn uniform(&mut self) -> f64 {
+        (self.next() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
     }
 
     pub(crate) fn shuffle<T>(&mut self, v: &mut [T]) {

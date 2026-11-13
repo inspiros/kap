@@ -177,7 +177,7 @@ where
 
 /// Solve a k-partite problem natively; return Python lists.
 #[pyfunction]
-#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0, refine = None, time_limit = None))]
+#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0, refine = None, time_limit = None, population = None))]
 #[allow(clippy::too_many_arguments)]
 fn k_assignment<'py>(
     py: Python<'py>,
@@ -189,6 +189,7 @@ fn k_assignment<'py>(
     seed: u64,
     refine: Option<&str>,
     time_limit: Option<f64>,
+    population: Option<usize>,
 ) -> PyResult<Py<PyAny>> {
     let algo = match algo.to_ascii_lowercase().as_str() {
         "a" | "am" => Algo::Am,
@@ -201,9 +202,10 @@ fn k_assignment<'py>(
         "1dv" | "dv1" => Algo::Dv1,
         "sdv" | "dvs" => Algo::DvS,
         "ils" => Algo::Ils,
+        "memetic" => Algo::Memetic,
         _ => {
             return Err(PyValueError::new_err(
-                "algo must be Am | Bm | Cm | Dm | Em | Fm | Shift | 1DV | sDV | ILS",
+                "algo must be Am | Bm | Cm | Dm | Em | Fm | Shift | 1DV | sDV | ILS | Memetic",
             ));
         }
     };
@@ -221,8 +223,10 @@ fn k_assignment<'py>(
     };
     let time_limit = time_limit
         .map(|seconds| {
-            if algo != Algo::Ils {
-                return Err(PyValueError::new_err("time_limit requires algo=\"ils\""));
+            if !matches!(algo, Algo::Ils | Algo::Memetic) {
+                return Err(PyValueError::new_err(
+                    "time_limit requires algo=\"ils\" or \"memetic\"",
+                ));
             }
             if !seconds.is_finite() || seconds <= 0.0 {
                 return Err(PyValueError::new_err(
@@ -238,13 +242,18 @@ fn k_assignment<'py>(
         max_iter,
         n_trials,
         seed,
-        refine: if algo == Algo::Ils { None } else { refine },
-        dv: if algo == Algo::Ils {
+        refine: if matches!(algo, Algo::Ils | Algo::Memetic) {
+            None
+        } else {
+            refine
+        },
+        dv: if matches!(algo, Algo::Ils | Algo::Memetic) {
             refine.unwrap_or(Dv::One)
         } else {
             Dv::One
         },
         time_limit,
+        population,
     };
     if let Some(result) = try_k_dtype::<f64>(py, &cost_matrices, algo, &opts) {
         return Ok(result?.into_pyobject(py)?.unbind().into_any());

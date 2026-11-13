@@ -57,4 +57,6 @@ different sizes, some matches are incomplete.
 | `return_free` | also return unmatched vertices |
 | `backend` | LAP backend, as above |
 | `random_state` | seed or `numpy.random.RandomState` for Em, Fm and ILS |
-| `time_limit` | optional finite positive ILS budget in seconds, checked between perturbations after the full start; native-only; only iteration budgets are reproducible |
+| `time_limit` | optional budget in seconds for ILS and memetic; when given, `max_iter` is ignored; native-only; only iteration budgets are reproducible |
+
+Native `algo="memetic"` uses `refine` to select DV, `population` (default 12) and `max_iter` for reproducible generation budgets, or `time_limit` for a budget in seconds with results dependent on machine speed.

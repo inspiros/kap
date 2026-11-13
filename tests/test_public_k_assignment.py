@@ -113,8 +113,9 @@ def test_return_free_false(paper_costs, algo):
 def test_signature_docstring_and_linear_assignment_unchanged():
     public = inspect.signature(kap.k_assignment)
     reference = inspect.signature(_reference.k_assignment)
-    assert list(public.parameters.values())[:-2] == list(reference.parameters.values())
-    assert list(public.parameters)[-2:] == ["refine", "time_limit"]
+    assert list(public.parameters.values())[:-3] == list(reference.parameters.values())
+    assert list(public.parameters)[-3:] == ["refine", "time_limit", "population"]
+    assert public.parameters["population"].default is None
     assert public.parameters["time_limit"].default is None
     assert public.parameters["refine"].default is None
     assert "1dv" in kap.k_assignment.__doc__

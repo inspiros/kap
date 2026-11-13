@@ -75,7 +75,8 @@ feature; the first best chain wins ties. `refine` selects the neighbourhood
 inside ILS: 1DV by default, or sDV with `refine="sdv"` (`k <= 16`). ILS requires
 `backend="kap"`.
 
-Optional `time_limit` is a finite positive budget in seconds, checked before
+Optional `time_limit` is a finite positive budget in seconds (in Python it
+replaces `max_iter`; the Rust API applies both), checked before
 each perturbation across all chains, after computing the full start solution.
 An in-progress DV descent finishes even if the deadline passes. Only iteration
 budgets are reproducible; a time limit makes results depend on machine speed.
@@ -83,6 +84,34 @@ budgets are reproducible; a time limit makes results depend on machine speed.
 This is the “Chain” method of Karapetyan and Gutin, “Efficient local search
 algorithms for known and new neighborhoods for the multidimensional assignment
 problem,” *Journal of Heuristics* 17, 2011.
+
+## Memetic algorithm
+
+`algo="memetic"` maintains a population of DV local optima. It starts from
+Shift followed by DV, mutates members by swapping non-anchor coordinates,
+and crosses parents while preserving their common cliques. Crossover repairs
+duplicate and missing vertices, including absent vertices for unequal sizes.
+Each new candidate passes through DV; selection keeps the distinct best
+solutions and preserves the elite. `refine` selects 1DV (default) or sDV
+inside the algorithm; `n_trials` is ignored. This requires `backend="kap"`.
+
+Without `time_limit`, `population` sets the target size (default 12, at least
+2), and `max_iter` caps generations; zero returns the best first-generation
+member. An integer `random_state` makes this mode reproducible, including
+across parallel execution. With a finite positive `time_limit` in seconds,
+the deadline counts from entry, and population size is estimated from the
+budget and measured local-search time unless explicitly supplied. In Python the
+time limit is then the only budget and `max_iter` is ignored (the Rust API
+applies both). An in-progress batch or generation finishes after
+the deadline, so time budgets make results depend on machine speed.
+
+kap starts from Shift instead of the paper's Greedy construction and includes
+the unperturbed local optimum in the first generation. Reference: Gutin and
+Karapetyan, “A memetic algorithm for the multidimensional assignment problem,”
+and Karapetyan and Gutin, “A New Approach to Population Sizing for Memetic
+Algorithms: A Case Study for the Multidimensional Assignment Problem,”
+*Evolutionary Computation* 19, 2011,
+[arXiv:1003.4314](https://arxiv.org/abs/1003.4314).
 
 ## Cost
 

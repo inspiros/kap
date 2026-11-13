@@ -16,6 +16,7 @@ BASE = ("Am", "Bm", "Cm", "Dm", "Em", "Fm")
 SEARCHES = [(algo, None) for algo in ("shift", "1dv", "sdv")]
 SEARCHES += list(itertools.product(BASE, ("1dv", "sdv")))
 SEARCHES += [("ils", None), ("ils", "sdv")]
+SEARCHES += [("memetic", None), ("memetic", "sdv")]
 
 
 @pytest.mark.parametrize("algo,refine", SEARCHES)
@@ -29,7 +30,10 @@ def test_valid_and_never_worse(algo, refine, k, equal, maximize):
     actual = kap.k_assignment(matrices, algo=algo, refine=refine, **options)
     assert_valid_assignment(matrices, sizes, actual)
     base_algo = ("sdv" if refine else "1dv") if algo == "ils" else (algo if refine else "Am")
-    base = kap.k_assignment(matrices, algo=base_algo, **options)
+    if algo == "memetic":
+        base = kap.k_assignment(matrices, algo="shift", refine=refine or "1dv", **options)
+    else:
+        base = kap.k_assignment(matrices, algo=base_algo, **options)
     cost, base_cost = sum(actual.matching_costs), sum(base.matching_costs)
     assert cost >= base_cost if maximize else cost <= base_cost
     if k == 3 and algo == "1dv":
@@ -39,7 +43,7 @@ def test_valid_and_never_worse(algo, refine, k, equal, maximize):
 @pytest.mark.parametrize("seed", range(8))
 @pytest.mark.parametrize("k", (2, 3, 4, 5))
 @pytest.mark.parametrize("maximize", (False, True))
-@pytest.mark.parametrize("algo", ("1dv", "ils"))
+@pytest.mark.parametrize("algo", ("1dv", "ils", "memetic"))
 def test_independent_single_part_local_optimum(seed, k, maximize, algo):
     n = 4
     matrices = random_instance(k, n=n, seed=seed, dtype=np.int64)
@@ -63,7 +67,7 @@ def test_independent_single_part_local_optimum(seed, k, maximize, algo):
 @pytest.mark.parametrize("alias,canonical", (
     ("sHiFtAm", "shift"), ("SHIFT", "shift"), ("DV1", "1dv"),
     ("1dV", "1dv"), ("DvS", "sdv"), ("SDV", "sdv"),
-    ("iLs", "ils"),
+    ("iLs", "ils"), ("MeMeTiC", "memetic"),
 ))
 def test_aliases(alias, canonical):
     matrices = random_instance(4, n=3, seed=91, dtype=np.int64)
@@ -122,6 +126,7 @@ def test_core_bad_options():
     ("Am", "1dv", -2, 0), ("Bm", "sdv", 7, 7),
     ("Em", "1dv", 7, 7), ("Fm", "sdv", 7, 7),
     ("ils", None, -2, 0), ("ils", "sdv", 7, 7),
+    ("memetic", None, -2, 0), ("memetic", "sdv", 7, 7),
 ))
 def test_iteration_forwarding(monkeypatch, algo, refine, limit, expected):
     seen = []
@@ -138,7 +143,8 @@ def test_iteration_forwarding(monkeypatch, algo, refine, limit, expected):
 @pytest.mark.parametrize("algo,option", (("Cm", "max_iter"), ("Em", "max_iter"),
                                          ("Em", "n_trials"), ("Fm", "max_iter"),
                                          ("1dv", "max_iter"), ("sdv", "max_iter"),
-                                         ("ils", "max_iter"), ("ils", "n_trials")))
+                                         ("ils", "max_iter"), ("ils", "n_trials"),
+                                         ("memetic", "max_iter")))
 def test_noninteger_search_options(algo, option):
     with pytest.raises(TypeError):
         kap.k_assignment([np.zeros((2, 2), dtype=np.int64)], algo=algo, **{option: 1.5})
@@ -182,9 +188,21 @@ def test_ils_bad_time_limit(seconds):
 def test_ils_far_future_deadline():
     # Fits Duration but exceeds Instant's range on common platforms.
     matrices = [np.zeros((2, 2), dtype=np.int64)]
-    for solve in (kap.k_assignment, _core.k_assignment):
-        assert solve(matrices, algo="ils", max_iter=0, time_limit=1e19) == solve(
-            matrices, algo="ils", max_iter=0)
+    # The public function ignores max_iter under a time limit, so test the binding.
+    assert _core.k_assignment(matrices, algo="ils", max_iter=0, time_limit=1e19) == \
+        _core.k_assignment(matrices, algo="ils", max_iter=0)
+
+
+@pytest.mark.parametrize("algo", ("ils", "memetic"))
+def test_time_limit_is_the_budget(algo):
+    # The default max_iter must not end a time-limited run early.
+    matrices = random_instance(3, sizes=[30, 30, 30], seed=7, dtype=np.int64)
+    before = time.monotonic()
+    actual = kap.k_assignment(matrices, algo=algo, random_state=0, time_limit=0.3,
+                              return_free=True)
+    elapsed = time.monotonic() - before
+    assert 0.25 < elapsed < 5
+    assert_valid_assignment(matrices, [30, 30, 30], actual)
 
 
 def test_time_limit_requires_ils_and_native_core(monkeypatch):
@@ -217,3 +235,68 @@ def test_ils_sdv_cap_and_core_zero_trials():
             solve(matrices, algo="ils", refine="sdv", max_iter=0)
     with pytest.raises(ValueError, match="n_trials"):
         _core.k_assignment([np.zeros((0, 0), dtype=np.int64)], "ils", n_trials=0)
+
+
+@pytest.mark.parametrize("sizes", ([4, 4, 4], [2, 2, 3], [1, 4, 2, 3]))
+@pytest.mark.parametrize("maximize", (False, True))
+@pytest.mark.parametrize("refine", (None, "sdv"))
+def test_memetic_valid_reproducible_and_start(sizes, maximize, refine):
+    matrices = random_instance(len(sizes), sizes=sizes, seed=196, dtype=np.int64)
+    options = dict(algo="memetic", maximize=maximize, return_free=True, random_state=42,
+                   refine=refine, max_iter=5, population=4)
+    actual = kap.k_assignment(matrices, **options)
+    assert_valid_assignment(matrices, sizes, actual)
+    assert actual == kap.k_assignment(matrices, **options)
+    assert actual == kap.k_assignment(matrices, n_trials=0, **options)
+    start = kap.k_assignment(matrices, algo="shift", refine=refine or "1dv",
+                            maximize=maximize, max_iter=10_000)
+    cost, start_cost = sum(actual.matching_costs), sum(start.matching_costs)
+    assert cost >= start_cost if maximize else cost <= start_cost
+    zero = kap.k_assignment(matrices, **{**options, "max_iter": 0})
+    assert zero == kap.k_assignment(matrices, **{**options, "max_iter": -5})
+    assert_valid_assignment(matrices, sizes, zero)
+    zero_cost = sum(zero.matching_costs)
+    assert zero_cost >= start_cost if maximize else zero_cost <= start_cost
+
+
+@pytest.mark.parametrize("options", (
+    {"algo": "memetic", "population": 1},
+    {"algo": "memetic", "population": 0},
+    {"algo": "ils", "population": 4},
+    {"algo": "memetic", "population": 2.5},
+    {"algo": "memetic", "population": "4"},
+    {"algo": "memetic", "population": True},
+))
+def test_memetic_population_errors(options):
+    with pytest.raises(ValueError, match="population"):
+        kap.k_assignment([np.zeros((2, 2), dtype=np.int64)], **options)
+
+
+@pytest.mark.parametrize("population", (None, 4))
+@pytest.mark.parametrize("maximize", (False, True))
+def test_memetic_time_limit(population, maximize):
+    sizes = [6, 8, 5, 7]
+    matrices = random_instance(len(sizes), sizes=sizes, seed=196, dtype=np.int64)
+    before = time.monotonic()
+    actual = kap.k_assignment(matrices, algo="memetic", population=population,
+                              maximize=maximize, return_free=True, random_state=42,
+                              time_limit=0.05, max_iter=10**9)
+    assert time.monotonic() - before < 3
+    assert_valid_assignment(matrices, sizes, actual)
+
+
+@pytest.mark.parametrize("n", (0, 1, 2))
+@pytest.mark.parametrize("population", (2, 3))
+def test_memetic_collapsed_population(n, population):
+    matrices = [np.zeros((n, n), dtype=np.int64)] * 3
+    actual = kap.k_assignment(matrices, algo="memetic", population=population,
+                              random_state=42, max_iter=5, return_free=True)
+    assert_valid_assignment(matrices, [n] * 3, actual)
+
+
+def test_memetic_sdv_cap():
+    refine = "sdv"
+    matrices = [np.zeros((0, 0), dtype=np.int64)] * (17 * 16 // 2)
+    for solve in (kap.k_assignment, _core.k_assignment):
+        with pytest.raises(ValueError, match="k <= 16"):
+            solve(matrices, algo="memetic", refine=refine, max_iter=0)

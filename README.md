@@ -76,6 +76,7 @@ Full documentation is in [docs](docs/index.md).
   ``"Shift"``, ``"1DV"`` and ``"sDV"``; ``refine`` can apply ``"1DV"`` or ``"sDV"`` after
   the selected algorithm. See [Algorithms](docs/algorithms.md) for their strategies and limits.
 - **Iterated local search.** Native ``algo="ils"`` perturbs and reoptimizes with DV; supports seeded parallel chains and an optional ``time_limit`` (see [Algorithms](docs/algorithms.md)).
+- **Memetic search.** Native ``algo="memetic"`` evolves DV local optima with mutation and common-clique crossover, using ``population`` and generation or time budgets (see [Algorithms](docs/algorithms.md)).
 - **Algorithms follow the paper.** $\text{C}_m$ is pure steepest descent, $\text{E}_m$ runs independent
   random trials, and $\text{F}_m$ is a tabu search that may take sideways or worse moves and returns the
   best solution found. $\text{A}_m$, $\text{B}_m$ and $\text{D}_m$ give the same results as 0.2.3,

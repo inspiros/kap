@@ -716,3 +716,244 @@ fn dv_masks_errors_and_shift_ties() {
     let final64 = am(&root64, Sense::Minimize, &mut solver).unwrap();
     assert!(final64.bipartition(&root64, 1u64 << 63).is_ok());
 }
+
+fn check_memetic_operators(sizes: &[usize], x: &[u32], y: &[u32], root: &Quotient<i64>, seed: u64) {
+    use crate::algo::{
+        Rng,
+        memetic::{crossover, perturb},
+    };
+    let k = sizes.len();
+    let anchor = (0..k)
+        .find(|&p| sizes[p] == *sizes.iter().max().unwrap())
+        .unwrap();
+    let mut rng = Rng::new(seed, 0);
+    let perturbed = perturb(x, k, anchor, 0.2, &mut rng);
+    Quotient::from_nodes(root, perturbed.clone()).unwrap();
+    assert_eq!(
+        x.chunks_exact(k).map(|r| r[anchor]).collect::<Vec<_>>(),
+        perturbed
+            .chunks_exact(k)
+            .map(|r| r[anchor])
+            .collect::<Vec<_>>()
+    );
+    let (a, b) = crossover(x, y, sizes, &mut rng);
+    for child in [&a, &b] {
+        Quotient::from_nodes(root, child.to_vec()).unwrap();
+        for row in x
+            .chunks_exact(k)
+            .filter(|row| y.chunks_exact(k).any(|r| r == *row))
+        {
+            assert!(child.chunks_exact(k).any(|r| r == row));
+        }
+    }
+    assert_eq!(crossover(x, x, sizes, &mut rng), (x.to_vec(), x.to_vec()));
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(60))]
+    #[test]
+    fn memetic_operator_properties((sizes, data, sense) in instance(), seed in any::<u64>()) {
+        use crate::algo::{Rng, memetic::perturb, shift};
+        let mats = views(&sizes, &data);
+        let root = Quotient::root(&KPartite::new(&mats).unwrap());
+        let x = shift(&root, sense, &mut LapSolver::new()).unwrap();
+        let anchor = (0..sizes.len()).find(|&p| sizes[p] == *sizes.iter().max().unwrap()).unwrap();
+        let mut rng = Rng::new(seed, 0);
+        let y = perturb(x.nodes(), sizes.len(), anchor, 4.0, &mut rng);
+        // Row order is immaterial to common-clique detection.
+        let mut rows: Vec<_> = y.chunks_exact(sizes.len()).map(<[u32]>::to_vec).collect();
+        rng.shuffle(&mut rows);
+        check_memetic_operators(&sizes, x.nodes(), &rows.concat(), &root, seed);
+    }
+
+    #[test]
+    fn memetic_search_properties((sizes, data, sense) in instance(), seed in any::<u64>()) {
+        use crate::{Dv, algo::{Rng, dv, memetic, shift}};
+        let mats = views(&sizes, &data);
+        let root = Quotient::root(&KPartite::new(&mats).unwrap());
+        let mut solver = LapSolver::new();
+        let anchor = (0..sizes.len()).find(|&p| sizes[p] == *sizes.iter().max().unwrap()).unwrap();
+        for kind in [Dv::One, Dv::Subsets] {
+            let opts = Options { sense, seed, dv: kind, max_iter: 4, population: Some(4), ..Options::default() };
+            let start = shift(&root, sense, &mut solver).unwrap();
+            let start = dv::improve(&root, start, kind, dv::CONVERGE, sense, &mut solver).unwrap();
+            let mut best = start.clone();
+            let mut rng = Rng::new(seed, 0);
+            if start.n_nodes(0) >= 2 {
+                for _ in 1..4 {
+                    let nodes = memetic::perturb(start.nodes(), sizes.len(), anchor, 0.2, &mut rng);
+                    let q = Quotient::from_nodes(&root, nodes).unwrap();
+                    let q = dv::improve(&root, q, kind, dv::CONVERGE, sense, &mut solver).unwrap();
+                    if better(q.score, best.score, sense) { best = q; }
+                }
+            }
+            let zero = k_assignment(&mats, Algo::Memetic, &Options { max_iter: 0, ..opts.clone() }).unwrap();
+            prop_assert_eq!(&zero, &best.reconstruct());
+            let current = memetic::memetic(&root, &opts, &mut solver).unwrap();
+            let sol = k_assignment(&mats, Algo::Memetic, &opts).unwrap();
+            check_valid(&sol, &sizes, &mats);
+            prop_assert_eq!(&sol, &current.reconstruct());
+            prop_assert!(!better(start.score, sol.cost, sense));
+            prop_assert_eq!(&sol, &k_assignment(&mats, Algo::Memetic, &opts).unwrap());
+            for mask in dv::masks(sizes.len(), kind).unwrap() {
+                let (two, matching) = current.bipartition(&root, mask).unwrap();
+                let cross: i64 = matching.iter().map(|&(r,c)| two.matrix(0,1).get(r as usize,c as usize)).sum();
+                let (_, best) = two.solve_pair(0, 1, &mut solver, sense).unwrap();
+                prop_assert!(!better(best, cross, sense));
+            }
+            let timed = k_assignment(&mats, Algo::Memetic, &Options {
+                time_limit: Some(std::time::Duration::ZERO), max_iter: usize::MAX, ..opts.clone()
+            }).unwrap();
+            prop_assert_eq!(timed, start.reconstruct());
+            let refined = k_assignment(&mats, Algo::Memetic, &Options { refine: Some(kind), ..opts }).unwrap();
+            prop_assert_eq!(&refined, &sol);
+        }
+    }
+}
+
+#[test]
+fn memetic_padding_collapse_and_options() {
+    use crate::algo::{Rng, memetic::perturb};
+    for sizes in [
+        vec![2, 2, 3],
+        vec![1, 4, 2, 3],
+        vec![4; 4],
+        vec![1; 3],
+        vec![2; 3],
+    ] {
+        let data: Vec<Vec<i64>> = all_pairs(sizes.len())
+            .iter()
+            .map(|&(a, b)| vec![0; sizes[a] * sizes[b]])
+            .collect();
+        let mats = views(&sizes, &data);
+        let root = Quotient::root(&KPartite::new(&mats).unwrap());
+        let x = crate::algo::shift(&root, Sense::Minimize, &mut LapSolver::new()).unwrap();
+        let anchor = (0..sizes.len())
+            .find(|&p| sizes[p] == *sizes.iter().max().unwrap())
+            .unwrap();
+        for seed in 0..100 {
+            let y = perturb(x.nodes(), sizes.len(), anchor, 4.0, &mut Rng::new(seed, 0));
+            check_memetic_operators(&sizes, x.nodes(), &y, &root, seed);
+        }
+        for population in [2, 3, 4] {
+            let opts = Options {
+                population: Some(population),
+                max_iter: 8,
+                ..Options::default()
+            };
+            check_valid(
+                &k_assignment(&mats, Algo::Memetic, &opts).unwrap(),
+                &sizes,
+                &mats,
+            );
+        }
+        for population in [0, 1] {
+            assert_eq!(
+                k_assignment(
+                    &mats,
+                    Algo::Memetic,
+                    &Options {
+                        population: Some(population),
+                        ..Options::default()
+                    }
+                ),
+                Err(KapError::BadOption("population"))
+            );
+        }
+        for population in [None, Some(3)] {
+            let before = std::time::Instant::now();
+            let opts = Options {
+                population,
+                time_limit: Some(std::time::Duration::ZERO),
+                max_iter: usize::MAX,
+                ..Options::default()
+            };
+            check_valid(
+                &k_assignment(&mats, Algo::Memetic, &opts).unwrap(),
+                &sizes,
+                &mats,
+            );
+            assert!(before.elapsed() < std::time::Duration::from_secs(5));
+        }
+    }
+    let empty = MatrixView::from_row_major(&[] as &[i64], 0, 0).unwrap();
+    assert_eq!(
+        k_assignment(
+            &vec![empty; 17 * 16 / 2],
+            Algo::Memetic,
+            &Options {
+                dv: crate::Dv::Subsets,
+                ..Options::default()
+            }
+        ),
+        Err(KapError::Unsupported("sDV requires k <= 16"))
+    );
+    // Every descent reaches the unique bipartite optimum, so deduplication
+    // leaves a single parent even though N = 2 and the target is larger.
+    let data = vec![vec![0, 10, 10, 0]];
+    let mats = views(&[2, 2], &data);
+    for sense in [Sense::Minimize, Sense::Maximize] {
+        for population in [2, 3, 4] {
+            let sol = k_assignment(
+                &mats,
+                Algo::Memetic,
+                &Options {
+                    sense,
+                    population: Some(population),
+                    max_iter: 8,
+                    ..Options::default()
+                },
+            )
+            .unwrap();
+            check_valid(&sol, &[2, 2], &mats);
+            assert_eq!(sol.cost, if sense == Sense::Minimize { 0 } else { 20 });
+        }
+    }
+}
+
+#[test]
+fn memetic_generation_feature_parity() {
+    let sizes = [7, 8, 6, 8];
+    let data: Vec<Vec<i64>> = all_pairs(sizes.len())
+        .iter()
+        .enumerate()
+        .map(|(i, &(a, b))| {
+            (0..sizes[a] * sizes[b])
+                .map(|j| ((i * 47 + j * 31 + j * j * 7) % 97) as i64 - 40)
+                .collect()
+        })
+        .collect();
+    let mats = views(&sizes, &data);
+    let opts = Options {
+        population: Some(5),
+        max_iter: 5,
+        seed: 196,
+        ..Options::default()
+    };
+    let sol = k_assignment(&mats, Algo::Memetic, &opts).unwrap();
+    // The same fixture runs with and without rayon; also check thread counts.
+    assert_eq!(
+        canonical_cliques(sol.clone()),
+        vec![
+            (vec![(0, 0), (1, 0), (2, 3), (3, 5)], -119),
+            (vec![(0, 1), (1, 7), (2, 0), (3, 7)], -153),
+            (vec![(0, 2), (1, 2), (2, 4), (3, 3)], -200),
+            (vec![(0, 3), (1, 4), (2, 5), (3, 2)], -106),
+            (vec![(0, 4), (1, 1), (3, 4)], -91),
+            (vec![(0, 5), (1, 3), (3, 1)], -63),
+            (vec![(0, 6), (1, 6), (2, 1), (3, 6)], -27),
+            (vec![(1, 5), (2, 2), (3, 0)], -45),
+        ]
+    );
+    #[cfg(feature = "rayon")]
+    for threads in [1, 4] {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap();
+        assert_eq!(
+            pool.install(|| k_assignment(&mats, Algo::Memetic, &opts).unwrap()),
+            sol
+        );
+    }
+}

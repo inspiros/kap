@@ -17,4 +17,5 @@ def k_assignment(
     seed: int = 0,
     refine: str | None = None,
     time_limit: float | None = None,
+    population: int | None = None,
 ) -> tuple[list[list[tuple[int, int]]], list[float] | list[int], list[tuple[int, int]]]: ...

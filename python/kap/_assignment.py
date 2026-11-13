@@ -1,5 +1,6 @@
 """Public k-assignment dispatch to the native core or the Python reference."""
 
+import sys
 from typing import Optional, Sequence, Union
 
 import numpy as np
@@ -39,7 +40,8 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
                  backend: str = "kap",
                  random_state: Optional[Union[np.random.RandomState, int]] = None,
                  refine: Optional[str] = None,
-                 time_limit: Optional[float] = None) -> AssignmentResult:
+                 time_limit: Optional[float] = None,
+                 population: Optional[int] = None) -> AssignmentResult:
     r"""
     Solve the k-Assignment Problem using merge heuristics and local search.
     Gabrovšek's multiple Hungarian methods are described in ref. [1]_. This
@@ -49,14 +51,16 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
         cost_matrices (sequence of ndarray): List of pairwise cost matrices,
             ordered as in ``itertools.combination(n, 2)``.
         algo (str): "Am", "Bm", "Cm", "Dm", "Em", "Fm", "shift" (or "ShiftAm"),
-            "1dv" (or "dv1"), "sdv" (or "dvs"), or "ils", case-insensitive.
+            "1dv" (or "dv1"), "sdv" (or "dvs"), "ils", or "memetic", case-insensitive.
             Shift keeps the best Am over cyclic part orders. 1DV and sDV start
             from Am and re-match one part or a subset against the rest.
             ILS perturbs an incumbent and runs DV to convergence at each step.
+            Memetic evolves a population of DV local optima from Shift.
             The new algorithms require backend="kap" (native core).
             sDV supports at most 16 partites. Defaults to "Cm".
         max_iter (int): Maximum number of moves for Cm, Em (per trial) and Fm.
-            For ILS this caps perturbations per chain; for 1DV, sDV and other
+            For memetic this caps generations (zero returns the best of the first
+            generation). For ILS this caps perturbations per chain; for 1DV, sDV and other
             algorithms with refine it caps full sweeps. Zero returns the start.
             Negative values are treated as zero except for Em/Fm, which require
             a positive limit. Ignored otherwise. Defaults to 100.
@@ -71,18 +75,24 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
             Defaults to "kap".
         random_state (RandomState, Generator, int, optional): Controls the pseudo random
             number generation for shuffling or choosing random partites pair in
-            Em, Fm and ILS algorithms. Pass an int for reproducible output across
+            Em, Fm, ILS and memetic algorithms. Pass an int for reproducible output across
             multiple function calls. Defaults to None.
         refine (str, optional): "1dv"/"dv1" or "sdv"/"dvs", case-insensitive.
-            For ILS, select its DV neighbourhood (default 1DV); otherwise run
+            For ILS and memetic, select the DV neighbourhood (default 1DV); otherwise run
             dimensionwise variation after the selected algorithm. Moves
             strictly improve cost, including with unequal part sizes. Requires
             backend="kap" (native core). Defaults to None.
-        time_limit (float, optional): Finite positive ILS budget in seconds,
-            checked between perturbations after computing the full start solution.
-            Requires algo="ils" and backend="kap" (native core). Only iteration
-            budgets are reproducible; a time limit makes results depend on machine
-            speed. Defaults to None.
+        time_limit (float, optional): Finite positive ILS or memetic budget in seconds.
+            ILS checks between perturbations after the start; memetic counts from
+            entry and checks between first-generation batches and generations.
+            When given, it is the only budget and max_iter is ignored.
+            Requires backend="kap" (native core). A time limit makes results
+            depend on machine speed. Defaults to None.
+        population (int, optional): Memetic only, at least 2. Without time_limit,
+            use this fixed size (default 12) and max_iter generations, reproducibly
+            per seed. With time_limit, use this size or estimate it from the budget
+            and measured local-search time.
+            n_trials is ignored for memetic. Defaults to None.
 
     Returns:
         matching_results: A namedtuple of ``matches``, ``matching_costs``,
@@ -93,13 +103,20 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
             *Mathematics*, 8(11), 2050, November 2020, :doi:`10.3390/math8112050`
     """
     aliases = {"shift": "shift", "shiftam": "shift", "1dv": "1dv",
-               "dv1": "1dv", "sdv": "sdv", "dvs": "sdv", "ils": "ils"}
+               "dv1": "1dv", "sdv": "sdv", "dvs": "sdv", "ils": "ils",
+               "memetic": "memetic"}
     new_algo = aliases.get(algo.lower()) if isinstance(algo, str) else None
     if time_limit is not None:
-        if new_algo != "ils":
-            raise ValueError('time_limit requires algo="ils"')
+        if new_algo not in ("ils", "memetic"):
+            raise ValueError('time_limit requires algo="ils" or "memetic"')
         if not np.isfinite(time_limit) or time_limit <= 0:
             raise ValueError("time_limit must be finite and positive")
+    if population is not None:
+        if new_algo != "memetic":
+            raise ValueError('population requires algo="memetic"')
+        if isinstance(population, (bool, np.bool_)) or not isinstance(population, (int, np.integer)) or population < 2:
+            raise ValueError("population must be an int >= 2")
+        population = int(population)
     if refine is not None:
         if not isinstance(refine, str) or refine.lower() not in ("1dv", "dv1", "sdv", "dvs"):
             raise ValueError("refine must be 1DV | sDV")
@@ -112,7 +129,7 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
             pass
     if native_k_assignment is None:
         if new_algo is not None or refine is not None or time_limit is not None:
-            raise ValueError('Shift, 1DV, sDV, ILS, refine and time_limit need backend="kap" (native core)')
+            raise ValueError('Shift, 1DV, sDV, ILS, memetic, refine and time_limit need backend="kap" (native core)')
         return _reference.k_assignment(
             cost_matrices, algo=algo, max_iter=max_iter, n_trials=n_trials,
             maximize=maximize, return_free=return_free, backend=backend,
@@ -142,11 +159,15 @@ def k_assignment(cost_matrices: Sequence[Array2DLike],
     iterations = 100
     if algo in ("e", "f"):
         iterations = max_iter
-    elif algo in ("c", "1dv", "sdv", "ils") or refine is not None:
+    elif algo in ("c", "1dv", "sdv", "ils", "memetic") or refine is not None:
         iterations = max(0, max_iter)
+    if time_limit is not None:
+        # The time limit is the budget; the default max_iter must not end the run early.
+        iterations = sys.maxsize
     trials = n_trials if algo in ("e", "ils") else 1
     matches, matching_costs, free = native_k_assignment(
         matrices, algo, maximize=bool(maximize), max_iter=iterations,
         n_trials=trials, seed=_seed(random_state), refine=refine, time_limit=time_limit,
+        population=population,
     )
     return AssignmentResult(matches, matching_costs, free if return_free else None)
