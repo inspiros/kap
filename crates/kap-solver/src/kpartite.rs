@@ -234,6 +234,65 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
         }
     }
 
+    /// Build a final quotient from a row-major table of original vertices.
+    /// `NONE` denotes an absent vertex. Every original vertex must occur once,
+    /// and every row must contain at least one vertex.
+    pub fn from_nodes(root: &Self, nodes: Vec<u32>) -> Result<Self, KapError> {
+        let k = root.k_orig;
+        if root.n_parts() != k || (0..k).any(|p| root.members(p) != 1 << p) || nodes.len() % k != 0
+        {
+            return Err(KapError::BadMatching);
+        }
+        let mut used: Vec<Vec<bool>> = (0..k).map(|p| vec![false; root.n_nodes(p)]).collect();
+        let mut costs = Vec::with_capacity(nodes.len() / k);
+        let mut score = A::ZERO;
+        for node in nodes.chunks_exact(k) {
+            if node.iter().all(|&v| v == NONE) {
+                return Err(KapError::BadMatching);
+            }
+            for (p, &v) in node.iter().enumerate() {
+                if v != NONE {
+                    let Some(seen) = used[p].get_mut(v as usize) else {
+                        return Err(KapError::BadMatching);
+                    };
+                    if *seen {
+                        return Err(KapError::BadMatching);
+                    }
+                    *seen = true;
+                }
+            }
+            let mut cost = A::ZERO;
+            for a in 0..k {
+                for b in a + 1..k {
+                    if node[a] != NONE && node[b] != NONE {
+                        cost = cost + root.matrix(a, b).get(node[a] as usize, node[b] as usize);
+                    }
+                }
+            }
+            costs.push(cost);
+            score = score + cost;
+        }
+        if used.iter().flatten().any(|&seen| !seen) {
+            return Err(KapError::BadMatching);
+        }
+        Ok(Self {
+            k_orig: k,
+            parts: vec![Part {
+                members: u64::MAX >> (64 - k),
+                nodes: nodes.into(),
+                costs: costs.into(),
+            }],
+            matrices: Vec::new(),
+            score,
+        })
+    }
+
+    /// Row-major original vertex table of a final quotient.
+    pub(crate) fn nodes(&self) -> &[u32] {
+        assert_eq!(self.n_parts(), 1);
+        &self.parts[0].nodes
+    }
+
     /// Number of current super-partites.
     pub fn n_parts(&self) -> usize {
         self.parts.len()

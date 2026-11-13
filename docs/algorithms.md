@@ -57,6 +57,33 @@ Journal of Operational Research* 158, 2004; Karapetyan and Gutin,
 “Efficient local search algorithms for known and new neighborhoods for the
 multidimensional assignment problem,” *Journal of Heuristics* 17, 2011.
 
+## Iterated local search (ILS)
+
+`algo="ils"` starts with Am followed by DV to convergence. Each step perturbs
+some nodes of the incumbent, runs DV to convergence again, and keeps the
+candidate only if its score strictly improves. The perturbation chooses
+`ceil(N/25) + 1` distinct nodes, clamped to `2..N`, where `N` is the number of
+solution nodes. It fixes the first largest original partite and independently
+shuffles every other partite's entries, including absent vertices, among the
+chosen nodes. This preserves a valid partition for unequal sizes. With fewer
+than two nodes, ILS returns the start.
+
+`max_iter` caps perturbations per chain (zero returns the start), `n_trials`
+selects independent chains from that same start, and `random_state` seeds them.
+Chains run in parallel in the native Python core, or in Rust with the `rayon`
+feature; the first best chain wins ties. `refine` selects the neighbourhood
+inside ILS: 1DV by default, or sDV with `refine="sdv"` (`k <= 16`). ILS requires
+`backend="kap"`.
+
+Optional `time_limit` is a finite positive budget in seconds, checked before
+each perturbation across all chains, after computing the full start solution.
+An in-progress DV descent finishes even if the deadline passes. Only iteration
+budgets are reproducible; a time limit makes results depend on machine speed.
+
+This is the “Chain” method of Karapetyan and Gutin, “Efficient local search
+algorithms for known and new neighborhoods for the multidimensional assignment
+problem,” *Journal of Heuristics* 17, 2011.
+
 ## Cost
 
 LAP calls made by one run of Bm, counting the intermediate levels too. The

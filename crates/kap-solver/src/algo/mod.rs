@@ -3,6 +3,7 @@
 use crate::{Acc, Cost, KPartite, KSolution, KapError, LapSolver, MatrixView, Quotient, Sense};
 
 pub(crate) mod dv;
+pub(crate) mod ils;
 mod merge;
 mod pairfix;
 
@@ -42,6 +43,8 @@ pub enum Algo {
     Dv1,
     /// Am followed by subset dimensionwise variation.
     DvS,
+    /// Iterated local search over DV, with independent seeded chains.
+    Ils,
 }
 
 /// Algorithm settings.
@@ -49,14 +52,18 @@ pub enum Algo {
 pub struct Options {
     /// Optimization direction.
     pub sense: Sense,
-    /// Move limit of Cm, Em (per trial) and Fm; sweep limit of DV.
+    /// Move limit of Cm, Em (per trial) and Fm; sweep limit of DV; perturbations per ILS chain.
     pub max_iter: usize,
-    /// Number of independent Em trials.
+    /// Number of independent Em trials or ILS chains.
     pub n_trials: usize,
-    /// Seed of Em and Fm; equal seeds give equal results.
+    /// Seed of Em, Fm and ILS; equal seeds and iteration budgets give equal results.
     pub seed: u64,
     /// Optional DV search after the selected algorithm.
     pub refine: Option<Dv>,
+    /// Neighbourhood used within ILS.
+    pub dv: Dv,
+    /// Optional ILS time budget, checked between perturbations after the start.
+    pub time_limit: Option<std::time::Duration>,
 }
 
 impl Default for Options {
@@ -67,6 +74,8 @@ impl Default for Options {
             n_trials: 1,
             seed: 0,
             refine: None,
+            dv: Dv::One,
+            time_limit: None,
         }
     }
 }
@@ -91,10 +100,14 @@ where
     if matches!(algo, Algo::Em | Algo::Fm) && opts.max_iter == 0 {
         return Err(KapError::BadOption("max_iter"));
     }
-    if algo == Algo::Em && opts.n_trials == 0 {
+    if matches!(algo, Algo::Em | Algo::Ils) && opts.n_trials == 0 {
         return Err(KapError::BadOption("n_trials"));
     }
-    if (algo == Algo::DvS || opts.refine == Some(Dv::Subsets)) && problem.sizes().len() > 16 {
+    if (algo == Algo::DvS
+        || opts.refine == Some(Dv::Subsets)
+        || (algo == Algo::Ils && opts.dv == Dv::Subsets))
+        && problem.sizes().len() > 16
+    {
         return Err(KapError::Unsupported("sDV requires k <= 16"));
     }
     let root = Quotient::root(&problem);
@@ -106,6 +119,7 @@ where
         Algo::Cm => cm(&root, opts, &mut solver)?,
         Algo::Em => em(&root, opts, &mut solver)?,
         Algo::Fm => fm(&root, opts, &mut solver)?,
+        Algo::Ils => ils::ils(&root, opts, &mut solver)?,
         Algo::Shift => shift(&root, opts.sense, &mut solver)?,
         Algo::Dv1 | Algo::DvS => {
             let start = am(&root, opts.sense, &mut solver)?;
@@ -114,11 +128,11 @@ where
             } else {
                 Dv::Subsets
             };
-            dv::improve(&root, start, kind, opts, &mut solver)?
+            dv::improve(&root, start, kind, opts.max_iter, opts.sense, &mut solver)?
         }
     };
     if let Some(kind) = opts.refine {
-        q = dv::improve(&root, q, kind, opts, &mut solver)?;
+        q = dv::improve(&root, q, kind, opts.max_iter, opts.sense, &mut solver)?;
     }
     Ok(q.reconstruct())
 }

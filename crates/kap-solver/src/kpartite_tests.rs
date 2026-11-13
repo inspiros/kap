@@ -303,7 +303,7 @@ proptest! {
         let root = Quotient::root(&KPartite::new(&mats).unwrap());
         let mut solver = LapSolver::new();
         let start = bm(&root,sense,&mut solver).unwrap().0.reconstruct().cost;
-        let opts = |max_iter, n_trials| Options { sense, max_iter, n_trials, seed, refine: None };
+        let opts = |max_iter, n_trials| Options { sense, max_iter, n_trials, seed, ..Options::default() };
         for algo in [Algo::Cm,Algo::Em,Algo::Fm] {
             let sol = k_assignment(&mats,algo,&opts(100,3)).unwrap();
             check_valid(&sol,&sizes,&mats);
@@ -353,6 +353,200 @@ fn canonical_cliques(sol: KSolution<i64>) -> Vec<(Vec<(usize, usize)>, i64)> {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(60))]
     #[test]
+    fn from_nodes_round_trip((sizes, data, sense) in instance()) {
+        let mats = views(&sizes, &data);
+        let root = Quotient::root(&KPartite::new(&mats).unwrap());
+        let mut solver = LapSolver::new();
+        for kind in [crate::Dv::One, crate::Dv::Subsets] {
+            let start = crate::algo::am(&root, sense, &mut solver).unwrap();
+            let current = crate::algo::dv::improve(&root, start, kind, usize::MAX, sense, &mut solver).unwrap();
+            let rebuilt = Quotient::from_nodes(&root, current.nodes().to_vec()).unwrap();
+            prop_assert_eq!(rebuilt.score, current.score);
+            prop_assert_eq!(rebuilt.members(0), (1 << sizes.len()) - 1);
+            prop_assert!(rebuilt.matrices.is_empty());
+            check_valid(&rebuilt.reconstruct(), &sizes, &mats);
+            prop_assert_eq!(canonical_cliques(rebuilt.reconstruct()), canonical_cliques(current.reconstruct()));
+        }
+    }
+
+    #[test]
+    fn ils_properties((sizes, data, sense) in instance(), seed in any::<u64>()) {
+        use crate::{Dv, algo::{dv, ils}};
+        let mats = views(&sizes, &data);
+        let root = Quotient::root(&KPartite::new(&mats).unwrap());
+        let mut solver = LapSolver::new();
+        for (kind, base_algo) in [(Dv::One, Algo::Dv1), (Dv::Subsets, Algo::DvS)] {
+            let opts = Options { sense, seed, dv: kind, max_iter: 40, ..Options::default() };
+            let base = k_assignment(&mats, base_algo, &Options { max_iter: usize::MAX, ..opts.clone() }).unwrap();
+            let zero = k_assignment(&mats, Algo::Ils, &Options { max_iter: 0, ..opts.clone() }).unwrap();
+            prop_assert_eq!(&zero, &base);
+            let current = ils::ils(&root, &opts, &mut solver).unwrap();
+            let sol = k_assignment(&mats, Algo::Ils, &opts).unwrap();
+            prop_assert_eq!(current.reconstruct(), sol.clone());
+            check_valid(&sol, &sizes, &mats);
+            prop_assert_eq!(current.n_nodes(0), *sizes.iter().max().unwrap());
+            prop_assert!(!better(base.cost, sol.cost, sense));
+            prop_assert_eq!(&sol, &k_assignment(&mats, Algo::Ils, &opts).unwrap());
+            let four = k_assignment(&mats, Algo::Ils, &Options { n_trials: 4, ..opts.clone() }).unwrap();
+            prop_assert!(!better(sol.cost, four.cost, sense));
+            for mask in dv::masks(sizes.len(), kind).unwrap() {
+                let (two, matching) = current.bipartition(&root, mask).unwrap();
+                let cross: i64 = matching.iter().map(|&(r,c)| two.matrix(0,1).get(r as usize,c as usize)).sum();
+                let (_, best) = two.solve_pair(0, 1, &mut solver, sense).unwrap();
+                prop_assert!(!better(best, cross, sense));
+            }
+            let timed = k_assignment(&mats, Algo::Ils, &Options {
+                time_limit: Some(std::time::Duration::ZERO), max_iter: usize::MAX, ..opts
+            }).unwrap();
+            prop_assert_eq!(timed, zero);
+        }
+    }
+}
+
+#[test]
+fn from_nodes_bad_tables_and_limits() {
+    let data = vec![vec![0; 4], vec![0; 6], vec![0; 6]];
+    let mats = views(&[2, 2, 3], &data);
+    let root = Quotient::root(&KPartite::new(&mats).unwrap());
+    let good = vec![0, 0, 0, 1, 1, 1, NONE, NONE, 2];
+    let mut duplicate = good.clone();
+    duplicate[6] = 0;
+    let mut missing = good.clone();
+    missing[3] = NONE;
+    let mut empty_row = good.clone();
+    empty_row.extend([NONE; 3]);
+    let mut wrong_length = good.clone();
+    wrong_length.pop();
+    let mut out_of_range = good.clone();
+    out_of_range[3] = 2;
+    for nodes in [duplicate, missing, empty_row, wrong_length, out_of_range] {
+        assert!(matches!(
+            Quotient::from_nodes(&root, nodes),
+            Err(KapError::BadMatching)
+        ));
+    }
+    let final_q = Quotient::from_nodes(&root, good.clone()).unwrap();
+    assert!(matches!(
+        Quotient::from_nodes(&final_q, good),
+        Err(KapError::BadMatching)
+    ));
+    // A valid table can contain singleton nodes and need not have max(size) rows.
+    let singletons = vec![
+        0, NONE, NONE, 1, NONE, NONE, NONE, 0, NONE, NONE, 1, NONE, NONE, NONE, 0, NONE, NONE, 1,
+        NONE, NONE, 2,
+    ];
+    let q = Quotient::from_nodes(&root, singletons).unwrap();
+    check_valid(&q.reconstruct(), &[2, 2, 3], &mats);
+    assert_eq!(q.n_nodes(0), 7);
+    let empty = MatrixView::from_row_major(&[] as &[i64], 0, 0).unwrap();
+    let root64 = Quotient::root(&KPartite::new(&vec![empty; 64 * 63 / 2]).unwrap());
+    let q = Quotient::from_nodes(&root64, vec![]).unwrap();
+    assert_eq!(q.members(0), u64::MAX);
+    assert_eq!(q.score, 0);
+}
+
+#[test]
+fn ils_unequal_sizes_deadline_and_options() {
+    use crate::{Dv, algo::ils};
+    for sizes in [vec![2, 2, 3], vec![1, 4, 2, 3]] {
+        let data: Vec<Vec<i64>> = all_pairs(sizes.len())
+            .iter()
+            .enumerate()
+            .map(|(i, &(a, b))| {
+                (0..sizes[a] * sizes[b])
+                    .map(|j| ((i * 13 + j * 7) % 31) as i64 - 10)
+                    .collect()
+            })
+            .collect();
+        let mats = views(&sizes, &data);
+        let root = Quotient::root(&KPartite::new(&mats).unwrap());
+        for sense in [Sense::Minimize, Sense::Maximize] {
+            for dv in [Dv::One, Dv::Subsets] {
+                let opts = Options {
+                    sense,
+                    dv,
+                    max_iter: 200,
+                    n_trials: 4,
+                    ..Options::default()
+                };
+                let q = ils::ils(&root, &opts, &mut LapSolver::new()).unwrap();
+                check_valid(&q.reconstruct(), &sizes, &mats);
+                assert_eq!(q.n_nodes(0), *sizes.iter().max().unwrap());
+                let start = k_assignment(
+                    &mats,
+                    Algo::Ils,
+                    &Options {
+                        max_iter: 0,
+                        ..opts.clone()
+                    },
+                )
+                .unwrap();
+                let distant = k_assignment(
+                    &mats,
+                    Algo::Ils,
+                    &Options {
+                        max_iter: 0,
+                        time_limit: Some(std::time::Duration::MAX),
+                        ..opts.clone()
+                    },
+                )
+                .unwrap();
+                assert_eq!(distant, start);
+                let before = std::time::Instant::now();
+                let timed = k_assignment(
+                    &mats,
+                    Algo::Ils,
+                    &Options {
+                        max_iter: usize::MAX,
+                        time_limit: Some(std::time::Duration::ZERO),
+                        ..opts.clone()
+                    },
+                )
+                .unwrap();
+                assert!(before.elapsed() < std::time::Duration::from_secs(5));
+                assert_eq!(timed, start);
+                let refined = k_assignment(
+                    &mats,
+                    Algo::Ils,
+                    &Options {
+                        refine: Some(dv),
+                        ..opts
+                    },
+                )
+                .unwrap();
+                assert_eq!(refined, q.reconstruct());
+            }
+        }
+        assert_eq!(
+            k_assignment(
+                &mats,
+                Algo::Ils,
+                &Options {
+                    n_trials: 0,
+                    ..Options::default()
+                }
+            ),
+            Err(KapError::BadOption("n_trials"))
+        );
+    }
+    let empty = MatrixView::from_row_major(&[] as &[i64], 0, 0).unwrap();
+    assert_eq!(
+        k_assignment(
+            &vec![empty; 17 * 16 / 2],
+            Algo::Ils,
+            &Options {
+                dv: Dv::Subsets,
+                max_iter: 0,
+                ..Options::default()
+            }
+        ),
+        Err(KapError::Unsupported("sDV requires k <= 16"))
+    );
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(60))]
+    #[test]
     fn dv_shift_and_refinement((sizes, data, sense) in instance(), seed in any::<u64>()) {
         use crate::{Dv, algo::{am, dv}};
         let mats = views(&sizes, &data);
@@ -374,7 +568,7 @@ proptest! {
             }
         }
         for kind in [Dv::One, Dv::Subsets] {
-            let current = dv::improve(&root, start.clone(), kind, &opts, &mut solver).unwrap();
+            let current = dv::improve(&root, start.clone(), kind, opts.max_iter, sense, &mut solver).unwrap();
             for mask in dv::masks(sizes.len(), kind).unwrap() {
                 let (two, matching) = current.bipartition(&root, mask).unwrap();
                 let fixed = two.fix(0, 1, &matching).unwrap();

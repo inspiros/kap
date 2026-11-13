@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, time::Duration};
 
 use kap::{Algo, Cost, Dv, KSolution, LapError, LapSolver, MatrixView, Options, Sense};
 use numpy::ndarray::ArrayView2;
@@ -177,7 +177,7 @@ where
 
 /// Solve a k-partite problem natively; return Python lists.
 #[pyfunction]
-#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0, refine = None))]
+#[pyo3(signature = (cost_matrices, algo, maximize = false, max_iter = 100, n_trials = 1, seed = 0, refine = None, time_limit = None))]
 #[allow(clippy::too_many_arguments)]
 fn k_assignment<'py>(
     py: Python<'py>,
@@ -188,6 +188,7 @@ fn k_assignment<'py>(
     n_trials: usize,
     seed: u64,
     refine: Option<&str>,
+    time_limit: Option<f64>,
 ) -> PyResult<Py<PyAny>> {
     let algo = match algo.to_ascii_lowercase().as_str() {
         "a" | "am" => Algo::Am,
@@ -199,9 +200,10 @@ fn k_assignment<'py>(
         "shift" | "shiftam" => Algo::Shift,
         "1dv" | "dv1" => Algo::Dv1,
         "sdv" | "dvs" => Algo::DvS,
+        "ils" => Algo::Ils,
         _ => {
             return Err(PyValueError::new_err(
-                "algo must be Am | Bm | Cm | Dm | Em | Fm | Shift | 1DV | sDV",
+                "algo must be Am | Bm | Cm | Dm | Em | Fm | Shift | 1DV | sDV | ILS",
             ));
         }
     };
@@ -217,12 +219,32 @@ fn k_assignment<'py>(
     } else {
         Sense::Minimize
     };
+    let time_limit = time_limit
+        .map(|seconds| {
+            if algo != Algo::Ils {
+                return Err(PyValueError::new_err("time_limit requires algo=\"ils\""));
+            }
+            if !seconds.is_finite() || seconds <= 0.0 {
+                return Err(PyValueError::new_err(
+                    "time_limit must be finite and positive",
+                ));
+            }
+            Duration::try_from_secs_f64(seconds)
+                .map_err(|_| PyValueError::new_err("time_limit is out of range"))
+        })
+        .transpose()?;
     let opts = Options {
         sense,
         max_iter,
         n_trials,
         seed,
-        refine,
+        refine: if algo == Algo::Ils { None } else { refine },
+        dv: if algo == Algo::Ils {
+            refine.unwrap_or(Dv::One)
+        } else {
+            Dv::One
+        },
+        time_limit,
     };
     if let Some(result) = try_k_dtype::<f64>(py, &cost_matrices, algo, &opts) {
         return Ok(result?.into_pyobject(py)?.unbind().into_any());

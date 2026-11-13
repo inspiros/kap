@@ -49,11 +49,12 @@ different sizes, some matches are incomplete.
 
 | Argument | Meaning |
 |---|---|
-| `algo` | `"Am"` to `"Fm"`, plus `"Shift"`, `"1DV"` and `"sDV"`; see [Algorithms](algorithms.md). Default `"Cm"`; new methods require `backend="kap"` |
-| `refine` | optionally apply `"1DV"` or `"sDV"` after the selected algorithm; requires `backend="kap"` |
-| `max_iter` | move cap for Cm, Em and Fm; sweep cap for 1DV, sDV and `refine` |
-| `n_trials` | number of restarts for Em |
+| `algo` | `"Am"` to `"Fm"`, plus `"Shift"`, `"1DV"`, `"sDV"` and `"ils"`; see [Algorithms](algorithms.md). Default `"Cm"`; new methods require `backend="kap"` |
+| `refine` | optionally apply `"1DV"` or `"sDV"` after the selected algorithm, or select the DV neighbourhood inside ILS (default 1DV); requires `backend="kap"` |
+| `max_iter` | move cap for Cm, Em and Fm; sweep cap for 1DV, sDV and other algorithms with `refine`; perturbation cap per ILS chain |
+| `n_trials` | number of independent trials for Em or chains for ILS (positive) |
 | `maximize` | maximize instead of minimize |
 | `return_free` | also return unmatched vertices |
 | `backend` | LAP backend, as above |
-| `random_state` | seed or `numpy.random.RandomState` for Em and Fm |
+| `random_state` | seed or `numpy.random.RandomState` for Em, Fm and ILS |
+| `time_limit` | optional finite positive ILS budget in seconds, checked between perturbations after the full start; native-only; only iteration budgets are reproducible |
