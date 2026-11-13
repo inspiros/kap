@@ -131,18 +131,22 @@ print("Total cost:", sum(matching_result.matching_costs))
 ### Solving $k$-Assignment Problem
 
 ``kap.k_assignment`` is the equivalence for $k$-Assignment Problem.
-There are a few things to note about its parameters:
+The explicit functions ``kap.ils``, ``kap.memetic``, ``kap.local_search`` and
+``kap.multiple_hungarian`` expose each method directly; ``kap.k_assignment``
+remains available as a dispatcher. Its parameters include:
 - ``cost_matrices``: Sequence of $n (n - 1) / 2$ 2D cost matrices of pairwise matching costs between $n$ partites
   (might not be able to be represented as a 3D ``np.ndarray`` since partites can have different number of vertices)
   ordered as in ``itertools.combination(n, 2)``. For example, $[C_{01}, C_{02}, C_{03}, C_{12}, C_{13}, C_{23}]$.
 - ``algo``: Select ``"Am", "Bm", "Cm", "Dm", "Em", "Fm", "Shift", "1DV", "sDV", "ils"`` or ``"memetic"``.
   The default is ``"ils"`` with the native backend (randomised: pass ``random_state`` for reproducible
   results) and $\text{C}_m$ with other backends. For the best result within a time
-  budget, use ``"ils"`` with ``time_limit`` and ``n_trials`` set to the number of CPU cores
+  budget, use ``kap.ils(costs, time_limit=..., n_chains=os.cpu_count())``
   ([benchmarks](docs/benchmarks.md#solution-quality-of-the-search-methods)).
 - ``refine``: optionally select ``"1DV"`` or ``"sDV"`` to improve the result after ``algo``; requires ``backend="kap"``.
 - ``max_iter``, ``n_trials``, ``random_state``: control $\text{C}_m$, $\text{E}_m$ and $\text{F}_m$;
   pass an int (or a seeded ``RandomState``/``Generator``) to ``random_state`` for reproducible results.
+  ``max_iter`` defaults to 100, or unlimited for ILS and memetic with ``time_limit``;
+  when both are explicitly set, the iteration and time limits both apply.
 
 Its return type shares the same structure as that of ``kap.linear_assignment`` but with some small differences:
 - ``matches``: Each element is the list of indices of matched vertices. For example, ``[(0, 0), (1, 1), (2, 0)]``

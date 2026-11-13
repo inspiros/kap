@@ -30,37 +30,42 @@ Arguments:
 
 ## k-assignment
 
-`kap.k_assignment` takes the k(k-1)/2 pairwise cost matrices, ordered as
+The functions accept k(k-1)/2 pairwise cost matrices, ordered as
 `itertools.combinations(range(k), 2)`. For k = 4 that is
-`[C01, C02, C03, C12, C13, C23]`, where `Cij` has shape `(n_i, n_j)`.
-Partite sizes may differ.
+`[C01, C02, C03, C12, C13, C23]`, with `Cij` shaped `(n_i, n_j)`.
+Partite sizes may differ; matches can be incomplete.
+
+| Function | When to use it |
+|---|---|
+| `kap.ils` | Default search; for the best quality in a time budget, set `time_limit` and `n_chains` to the number of CPU cores. |
+| `kap.memetic` | Evolve a population of locally optimized solutions. |
+| `kap.local_search` | Fast deterministic DV polishing from Am, Bm, Dm or Shift. |
+| `kap.multiple_hungarian` | Use the paper's Am–Fm methods or Shift, with alternative LAP backends for Am–Fm. |
+
+See [Algorithms](algorithms.md) and the [benchmarks](benchmarks.md#solution-quality-of-the-search-methods).
+ILS, memetic and local search require the native core. Integer seeds make
+iteration-limited randomized runs reproducible; time limits depend on machine speed.
+
+`kap.k_assignment` dispatches to these methods and retains the original interface:
 
 ```python
 from kap import k_assignment
 
-res = k_assignment(cost_matrices)  # algo="ils" by default
+res = k_assignment(cost_matrices)  # algo="ils" by default with the native core
 res.matches         # list of matches, each a list of (partite, node) tuples
 res.matching_costs  # cost of each match: sum over all pairs of its members
 res.free            # with return_free=True, the unmatched vertices
 ```
 
-A match need not contain a vertex from every partite: when partites have
-different sizes, some matches are incomplete.
-
 | Argument | Meaning |
 |---|---|
-| `algo` | `"Am"` to `"Fm"`, plus `"Shift"`, `"1DV"`, `"sDV"` and `"ils"`; see [Algorithms](algorithms.md). Default `"ils"` with `backend="kap"`, else `"Cm"`; new methods require `backend="kap"` |
-| `refine` | optionally apply `"1DV"` or `"sDV"` after the selected algorithm, or select the DV neighbourhood inside ILS (default 1DV); requires `backend="kap"` |
-| `max_iter` | move cap for Cm, Em and Fm; sweep cap for 1DV, sDV and other algorithms with `refine`; perturbation cap per ILS chain |
-| `n_trials` | number of independent trials for Em or chains for ILS (positive) |
-| `maximize` | maximize instead of minimize |
-| `return_free` | also return unmatched vertices |
+| `algo` | `"Am"` to `"Fm"`, `"Shift"`, `"1DV"`, `"sDV"`, `"ils"` or `"memetic"`; default `"ils"` with the native core and `backend="kap"`, else `"Cm"` |
+| `refine` | Apply `"1DV"` or `"sDV"` after the method, or select the neighborhood inside ILS or memetic; native-only |
+| `max_iter` | Move, sweep, perturbation or generation limit depending on the method. Default 100, or unlimited for ILS and memetic when `time_limit` is set; an explicit limit applies alongside the time limit |
+| `n_trials` | Independent Em trials or ILS chains |
+| `maximize` | Maximize instead of minimize |
+| `return_free` | Also return unmatched vertices |
 | `backend` | LAP backend, as above |
-| `random_state` | seed or `numpy.random.RandomState` for Em, Fm and ILS |
-| `time_limit` | optional budget in seconds for ILS and memetic; when given, `max_iter` is ignored; native-only; only iteration budgets are reproducible |
-
-For the best result within a time budget, use `algo="ils"` with `time_limit` and `n_trials`
-set to the number of CPU cores; in our [benchmarks](benchmarks.md#solution-quality-of-the-search-methods)
-this matched or beat `algo="memetic"`.
-
-Native `algo="memetic"` uses `refine` to select DV, `population` (default 12) and `max_iter` for reproducible generation budgets, or `time_limit` for a budget in seconds with results dependent on machine speed.
+| `random_state` | Integer seed, `numpy.random.RandomState`, or `Generator` |
+| `time_limit` | Finite positive seconds for native ILS or memetic; applies alongside an explicit `max_iter` |
+| `population` | Memetic population size, at least 2; native-only |

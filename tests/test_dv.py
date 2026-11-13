@@ -188,9 +188,9 @@ def test_ils_bad_time_limit(seconds):
 def test_ils_far_future_deadline():
     # Fits Duration but exceeds Instant's range on common platforms.
     matrices = [np.zeros((2, 2), dtype=np.int64)]
-    # The public function ignores max_iter under a time limit, so test the binding.
-    assert _core.k_assignment(matrices, algo="ils", max_iter=0, time_limit=1e19) == \
-        _core.k_assignment(matrices, algo="ils", max_iter=0)
+    # Explicit iteration limits apply alongside a time limit.
+    assert kap.k_assignment(matrices, algo="ils", max_iter=0, time_limit=1e19, random_state=0) == \
+        kap.k_assignment(matrices, algo="ils", max_iter=0, random_state=0)
 
 
 @pytest.mark.parametrize("algo", ("ils", "memetic"))

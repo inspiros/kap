@@ -14,7 +14,7 @@ from ._reference.assignment import (
     _validate_search_options,
 )
 
-__all__ = ["k_assignment"]
+__all__ = ["ils", "memetic", "local_search", "multiple_hungarian", "k_assignment"]
 
 
 def _seed(random_state):
@@ -31,153 +31,255 @@ def _seed(random_state):
     return int(random_state.randint(0, 1 << 64, dtype=np.uint64))
 
 
-def k_assignment(cost_matrices: Sequence[Array2DLike],
-                 algo: Optional[str] = None,
-                 max_iter: int = 100,
-                 n_trials: int = 1,
-                 maximize: bool = False,
-                 return_free: bool = False,
-                 backend: str = "kap",
-                 random_state: Optional[Union[np.random.RandomState, int]] = None,
-                 refine: Optional[str] = None,
-                 time_limit: Optional[float] = None,
-                 population: Optional[int] = None) -> AssignmentResult:
-    r"""
-    Solve the k-Assignment Problem using merge heuristics and local search.
-    Gabrovšek's multiple Hungarian methods are described in ref. [1]_. This
-    calls the LAP solver multiple times. See :func:`linear_assignment` for details about the available backends.
+_ALIASES = {"shift": "shift", "shiftam": "shift", "1dv": "1dv", "dv1": "1dv",
+            "sdv": "sdv", "dvs": "sdv", "ils": "ils", "memetic": "memetic"}
 
-    Args:
-        cost_matrices (sequence of ndarray): List of pairwise cost matrices,
-            ordered as in ``itertools.combination(n, 2)``.
-        algo (str): "Am", "Bm", "Cm", "Dm", "Em", "Fm", "shift" (or "ShiftAm"),
-            "1dv" (or "dv1"), "sdv" (or "dvs"), "ils", or "memetic", case-insensitive.
-            Shift keeps the best Am over cyclic part orders. 1DV and sDV start
-            from Am and re-match one part or a subset against the rest.
-            ILS perturbs an incumbent and runs DV to convergence at each step.
-            Memetic evolves a population of DV local optima from Shift.
-            The new algorithms require backend="kap" (native core).
-            sDV supports at most 16 partites. Defaults to None: "ils" with
-            backend="kap" (native core), otherwise "Cm". ILS is randomised;
-            pass an int random_state for reproducible results.
-        max_iter (int): Maximum number of moves for Cm, Em (per trial) and Fm.
-            For memetic this caps generations (zero returns the best of the first
-            generation). For ILS this caps perturbations per chain; for 1DV, sDV and other
-            algorithms with refine it caps full sweeps. Zero returns the start.
-            Negative values are treated as zero except for Em/Fm, which require
-            a positive limit. Ignored otherwise. Defaults to 100.
-        n_trials (int): Positive number of independent trials for Em or chains for ILS.
-            This is ignored if other algorithm is used. Defaults to 1.
-        maximize (bool): Calculates a maximum weight matching if true.
-            Defaults to False.
-        return_free (bool): Return unmatched vertices if true.
-            Defaults to False.
-        backend (str): The backend used to solve the linear assignment problem.
-            Supported backends are "kap", "scipy", "lap", "lapjv", "munkres".
-            Defaults to "kap".
-        random_state (RandomState, Generator, int, optional): Controls the pseudo random
-            number generation for shuffling or choosing random partites pair in
-            Em, Fm, ILS and memetic algorithms. Pass an int for reproducible output across
-            multiple function calls. Defaults to None.
-        refine (str, optional): "1dv"/"dv1" or "sdv"/"dvs", case-insensitive.
-            For ILS and memetic, select the DV neighbourhood (default 1DV); otherwise run
-            dimensionwise variation after the selected algorithm. Moves
-            strictly improve cost, including with unequal part sizes. Requires
-            backend="kap" (native core). Defaults to None.
-        time_limit (float, optional): Finite positive ILS or memetic budget in seconds.
-            ILS checks between perturbations after the start; memetic counts from
-            entry and checks between first-generation batches and generations.
-            When given, it is the only budget and max_iter is ignored.
-            Requires backend="kap" (native core). A time limit makes results
-            depend on machine speed. Defaults to None.
-        population (int, optional): Memetic only, at least 2. Without time_limit,
-            use this fixed size (default 12) and max_iter generations, reproducibly
-            per seed. With time_limit, use this size or estimate it from the budget
-            and measured local-search time.
-            n_trials is ignored for memetic. Defaults to None.
 
-    Returns:
-        matching_results: A namedtuple of ``matches``, ``matching_costs``,
-            and optionally ``free`` vertices if ``return_free`` is True.
+def _core():
+    try:
+        from ._core import k_assignment
+        return k_assignment
+    except ImportError:
+        return None
 
-    References:
-        [1] Multiple Hungarian Method for k-Assignment Problem.
-            *Mathematics*, 8(11), 2050, November 2020, :doi:`10.3390/math8112050`
-    """
-    if algo is None:
-        algo = "Cm"
-        if isinstance(backend, str) and backend.lower() == "kap":
-            try:
-                from ._core import k_assignment as _  # noqa: F401
-                algo = "ils"
-            except ImportError:
-                pass
-    aliases = {"shift": "shift", "shiftam": "shift", "1dv": "1dv",
-               "dv1": "1dv", "sdv": "sdv", "dvs": "sdv", "ils": "ils",
-               "memetic": "memetic"}
-    new_algo = aliases.get(algo.lower()) if isinstance(algo, str) else None
+
+def _neighborhood(value, name="neighborhood"):
+    if not isinstance(value, str) or value.lower() not in ("1dv", "dv1", "sdv", "dvs"):
+        raise ValueError(f"{name} must be 1DV | sDV")
+    return _ALIASES[value.lower()]
+
+
+def _integer(value, name, minimum):
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise TypeError(f"{name} must be an int >= {minimum}")
+    if value < minimum:
+        raise ValueError(f"{name} must be an int >= {minimum}")
+    return int(value)
+
+
+def _budget(value, time_limit, name):
     if time_limit is not None:
-        if new_algo not in ("ils", "memetic"):
-            raise ValueError('time_limit requires algo="ils" or "memetic"')
-        if not np.isfinite(time_limit) or time_limit <= 0:
-            raise ValueError("time_limit must be finite and positive")
-    if population is not None:
-        if new_algo != "memetic":
-            raise ValueError('population requires algo="memetic"')
-        if isinstance(population, (bool, np.bool_)) or not isinstance(population, (int, np.integer)) or population < 2:
-            raise ValueError("population must be an int >= 2")
-        population = int(population)
-    if refine is not None:
-        if not isinstance(refine, str) or refine.lower() not in ("1dv", "dv1", "sdv", "dvs"):
-            raise ValueError("refine must be 1DV | sDV")
-        refine = aliases[refine.lower()]
-    native_k_assignment = None
-    if isinstance(backend, str) and backend.lower() == "kap":
         try:
-            from ._core import k_assignment as native_k_assignment
-        except ImportError:
-            pass
-    if native_k_assignment is None:
-        if new_algo is not None or refine is not None or time_limit is not None:
-            raise ValueError('Shift, 1DV, sDV, ILS, memetic, refine and time_limit need backend="kap" (native core)')
-        return _reference.k_assignment(
-            cost_matrices, algo=algo, max_iter=max_iter, n_trials=n_trials,
-            maximize=maximize, return_free=return_free, backend=backend,
-            random_state=random_state,
-        )
+            valid = bool(np.isfinite(time_limit)) and time_limit > 0
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            raise ValueError("time_limit must be finite and positive")
+    return (sys.maxsize if time_limit is not None else 100) if value is None else _integer(value, name, 0)
 
+
+def _native(cost_matrices, algo, *, max_iter=100, n_trials=1, maximize=False,
+            return_free=False, random_state=None, refine=None, time_limit=None, population=None):
+    native = _core()
+    if native is None:
+        raise RuntimeError("the native core is required")
     cost_matrices, _ = _validate_cost_matrices(cost_matrices)
-    algo = new_algo or _validate_algo(algo)
-    if algo == "ils":
-        # Reuse Em's positive trial-count validation; ILS allows zero iterations.
-        _validate_search_options("e", 1, n_trials)
-    else:
-        _validate_search_options(algo, max_iter, n_trials)
     for matrix in cost_matrices:
         if matrix.dtype.kind not in "biuf":
             raise TypeError(f"unsupported cost matrix dtype {matrix.dtype}")
     dtype = np.int64 if all(m.dtype.kind in "biu" for m in cost_matrices) else np.float64
     if dtype is np.int64:
-        int64_max = np.iinfo(np.int64).max
         for matrix in cost_matrices:
-            if matrix.dtype == np.uint64 and matrix.size and matrix.max() > int64_max:
+            if matrix.dtype == np.uint64 and matrix.size and matrix.max() > np.iinfo(np.int64).max:
                 raise OverflowError("uint64 cost matrix values exceed the int64 range "
                                     "supported by the native solver; convert to float64 "
                                     "or use another backend.")
     matrices = [np.asarray(matrix, dtype=dtype) for matrix in cost_matrices]
-    # Ignore options unused by the selected algorithm, as the reference does.
-    iterations = 100
-    if algo in ("e", "f"):
-        iterations = max_iter
-    elif algo in ("c", "1dv", "sdv", "ils", "memetic") or refine is not None:
-        iterations = max(0, max_iter)
-    if time_limit is not None:
-        # The time limit is the budget; the default max_iter must not end the run early.
-        iterations = sys.maxsize
-    trials = n_trials if algo in ("e", "ils") else 1
-    matches, matching_costs, free = native_k_assignment(
-        matrices, algo, maximize=bool(maximize), max_iter=iterations,
-        n_trials=trials, seed=_seed(random_state), refine=refine, time_limit=time_limit,
-        population=population,
-    )
-    return AssignmentResult(matches, matching_costs, free if return_free else None)
+    matches, costs, free = native(matrices, algo, maximize=bool(maximize), max_iter=max_iter,
+                                  n_trials=n_trials, seed=_seed(random_state), refine=refine,
+                                  time_limit=time_limit, population=population)
+    return AssignmentResult(matches, costs, free if return_free else None)
+
+
+def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborhood="1dv",
+        maximize=False, return_free=False, random_state=None):
+    """Run iterated local search, perturbing and reoptimizing independent chains.
+
+    The best solution found is returned. The native core is required.
+
+    Args:
+        cost_matrices: Pairwise cost matrices in combinations order.
+        max_iter: Nonnegative perturbations per chain; default 100, or unlimited with a time limit.
+        n_chains: Positive number of independent chains.
+        time_limit: Finite positive seconds; applies alongside max_iter when both are set.
+        neighborhood: "1dv" or "sdv" (also "dv1" or "dvs"), case-insensitive.
+        maximize: Maximize the score instead of minimizing it.
+        return_free: Include unmatched vertices in the result.
+        random_state: None, integer, RandomState or Generator; use an integer for reproducibility.
+
+    Returns:
+        AssignmentResult: Matches, their costs, and optionally free vertices.
+
+    A time limit makes results dependent on machine speed.
+    """
+    iterations = _budget(max_iter, time_limit, "max_iter")
+    chains = _integer(n_chains, "n_chains", 1)
+    return _native(cost_matrices, "ils", max_iter=iterations, n_trials=chains,
+                   time_limit=time_limit, refine=_neighborhood(neighborhood), maximize=maximize,
+                   return_free=return_free, random_state=random_state)
+
+
+def memetic(cost_matrices, *, generations=None, population=None, time_limit=None,
+            neighborhood="1dv", maximize=False, return_free=False, random_state=None):
+    """Evolve a population of locally optimized solutions using mutation and crossover.
+
+    Each candidate is refined with dimensionwise variation. The native core is required.
+
+    Args:
+        cost_matrices: Pairwise cost matrices in combinations order.
+        generations: Nonnegative generation limit; default 100, or unlimited with a time limit.
+        population: Population size, an integer >= 2, or None for the native default.
+        time_limit: Finite positive seconds; applies alongside generations when both are set.
+        neighborhood: "1dv" or "sdv" (also "dv1" or "dvs"), case-insensitive.
+        maximize: Maximize the score instead of minimizing it.
+        return_free: Include unmatched vertices in the result.
+        random_state: None, integer, RandomState or Generator; use an integer for reproducibility.
+
+    Returns:
+        AssignmentResult: Matches, their costs, and optionally free vertices.
+
+    A time limit makes results dependent on machine speed.
+    """
+    iterations = _budget(generations, time_limit, "generations")
+    if population is not None:
+        if isinstance(population, (bool, np.bool_)) or not isinstance(population, (int, np.integer)) or population < 2:
+            raise ValueError("population must be an int >= 2")
+        population = int(population)
+    return _native(cost_matrices, "memetic", max_iter=iterations, population=population,
+                   time_limit=time_limit, refine=_neighborhood(neighborhood), maximize=maximize,
+                   return_free=return_free, random_state=random_state)
+
+
+def local_search(cost_matrices, *, neighborhood="1dv", start="Am", max_sweeps=100,
+                 maximize=False, return_free=False):
+    """Build a deterministic starting solution and improve it with DV sweeps.
+
+    Search ends at a local optimum or the sweep limit. The native core is required.
+
+    Args:
+        cost_matrices: Pairwise cost matrices in combinations order.
+        neighborhood: "1dv" or "sdv" (also "dv1" or "dvs"), case-insensitive.
+        start: Starting method "Am", "Bm", "Dm", or "Shift", case-insensitive.
+        max_sweeps: Nonnegative maximum number of sweeps.
+        maximize: Maximize the score instead of minimizing it.
+        return_free: Include unmatched vertices in the result.
+
+    Returns:
+        AssignmentResult: Matches, their costs, and optionally free vertices.
+
+    This method is deterministic and needs no random seed.
+    """
+    starts = {"am": "a", "bm": "b", "dm": "d", "shift": "shift"}
+    if not isinstance(start, str) or start.lower() not in starts:
+        raise ValueError("start must be Am | Bm | Dm | Shift")
+    return _native(cost_matrices, starts[start.lower()], max_iter=_integer(max_sweeps, "max_sweeps", 0),
+                   refine=_neighborhood(neighborhood), maximize=maximize, return_free=return_free)
+
+
+def multiple_hungarian(cost_matrices, method="Cm", *, max_iter=100, n_trials=1,
+                       maximize=False, return_free=False, backend="kap", random_state=None):
+    """Solve using a multiple Hungarian method from the paper, or cyclic Shift.
+
+    Am–Fm use the selected LAP backend and fall back to the Python reference when
+    the native core is unavailable. Shift requires the native core and backend="kap".
+
+    Args:
+        cost_matrices: Pairwise cost matrices in combinations order.
+        method: "Am" through "Fm", or "Shift", case-insensitive.
+        max_iter: Move limit for Cm, Em and Fm; ignored for other methods.
+        n_trials: Number of independent Em trials.
+        maximize: Maximize the score instead of minimizing it.
+        return_free: Include unmatched vertices in the result.
+        backend: LAP backend: "kap", "scipy", "lap", "lapjv", or "munkres".
+        random_state: None, integer, RandomState or Generator; use an integer for reproducible Em/Fm results.
+
+    Returns:
+        AssignmentResult: Matches, their costs, and optionally free vertices.
+    """
+    shift = isinstance(method, str) and method.lower() in ("shift", "shiftam")
+    if not shift:
+        try:
+            algo = _validate_algo(method)
+        except (ValueError, AttributeError):
+            raise ValueError(f"method must be Am | Bm | Cm | Dm | Em | Fm | Shift; got {method}") from None
+    else:
+        algo = "shift"
+    native = isinstance(backend, str) and backend.lower() == "kap" and _core() is not None
+    if not native:
+        if shift:
+            raise ValueError('Shift needs backend="kap" (native core)')
+        return _reference.k_assignment(cost_matrices, algo=method, max_iter=max_iter, n_trials=n_trials,
+                                       maximize=maximize, return_free=return_free, backend=backend,
+                                       random_state=random_state)
+    _validate_search_options(algo, max_iter, n_trials)
+    iterations = max_iter if algo in ("e", "f") else max(0, max_iter) if algo == "c" else 100
+    return _native(cost_matrices, algo, max_iter=iterations, n_trials=n_trials if algo == "e" else 1,
+                   maximize=maximize, return_free=return_free, random_state=random_state)
+
+
+def k_assignment(cost_matrices: Sequence[Array2DLike], algo: Optional[str] = None,
+                 max_iter: Optional[int] = None, n_trials: int = 1, maximize: bool = False,
+                 return_free: bool = False, backend: str = "kap",
+                 random_state: Optional[Union[np.random.RandomState, int]] = None,
+                 refine: Optional[str] = None, time_limit: Optional[float] = None,
+                 population: Optional[int] = None) -> AssignmentResult:
+    """Dispatch a k-assignment problem to a search or multiple Hungarian method.
+
+    Args:
+        cost_matrices: Pairwise cost matrices in combinations order.
+        algo: Am–Fm, Shift, 1dv, sdv, ils or memetic; default ils with the
+            native core and backend="kap", otherwise Cm. Aliases are case-insensitive.
+        max_iter: Algorithm limit; None selects 100, or unlimited for a timed search.
+            Explicit limits also apply with time_limit. Negative limits are treated
+            as zero except for Em and Fm, which require positive limits.
+        n_trials: Independent Em trials or ILS chains.
+        maximize: Maximize total weight instead of minimizing it.
+        return_free: Include unmatched vertices.
+        backend: LAP backend; newer methods and refinement require backend="kap".
+        random_state: None, integer, RandomState or Generator; integers reproduce seeded runs.
+        refine: 1dv/dv1 or sdv/dvs; polish the result, or select the ILS/memetic neighborhood.
+        time_limit: Finite positive seconds for ILS or memetic; results depend on machine speed.
+        population: Memetic population size, at least 2, or None for the native default.
+
+    Returns:
+        AssignmentResult: Matches, their costs, and optionally free vertices.
+    """
+    native = isinstance(backend, str) and backend.lower() == "kap" and _core() is not None
+    if algo is None:
+        algo = "ils" if native else "Cm"
+    new_algo = _ALIASES.get(algo.lower()) if isinstance(algo, str) else None
+    if time_limit is not None and new_algo not in ("ils", "memetic"):
+        raise ValueError('time_limit requires algo="ils" or "memetic"')
+    if population is not None and new_algo != "memetic":
+        raise ValueError('population requires algo="memetic"')
+    if refine is not None:
+        refine = _neighborhood(refine, "refine")
+    if not native and (new_algo is not None or refine is not None or time_limit is not None):
+        raise ValueError('Shift, 1DV, sDV, ILS, memetic, refine and time_limit need backend="kap" (native core)')
+    common = dict(maximize=maximize, return_free=return_free)
+    if new_algo in ("ils", "memetic", "1dv", "sdv"):
+        # Preserve the dispatcher's historical treatment of negative limits.
+        limit = None if max_iter is None else max(0, max_iter)
+        if new_algo == "ils":
+            _validate_search_options("e", 1, n_trials)
+            return ils(cost_matrices, max_iter=limit, n_chains=n_trials, time_limit=time_limit,
+                       neighborhood=refine or "1dv", random_state=random_state, **common)
+        if new_algo == "memetic":
+            return memetic(cost_matrices, generations=limit, population=population, time_limit=time_limit,
+                           neighborhood=refine or "1dv", random_state=random_state, **common)
+        if refine is None:
+            return local_search(cost_matrices, neighborhood=new_algo, max_sweeps=100 if limit is None else limit, **common)
+        return _native(cost_matrices, new_algo, max_iter=100 if limit is None else limit,
+                       refine=refine, random_state=random_state, **common)
+    limit = 100 if max_iter is None else max_iter
+    if refine is not None:
+        normalized = new_algo or _validate_algo(algo)
+        _validate_search_options(normalized, limit, n_trials)
+        return _native(cost_matrices, normalized, max_iter=max(0, limit),
+                       n_trials=n_trials if normalized == "e" else 1, refine=refine,
+                       random_state=random_state, **common)
+    if new_algo is None and native:
+        # Preserve the reference's error text for dispatcher callers.
+        _validate_algo(algo)
+    return multiple_hungarian(cost_matrices, method=algo, max_iter=limit, n_trials=n_trials,
+                              backend=backend, random_state=random_state, **common)

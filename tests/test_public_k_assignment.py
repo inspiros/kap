@@ -115,8 +115,9 @@ def test_signature_docstring_and_linear_assignment_unchanged():
     reference = inspect.signature(_reference.k_assignment)
     shared = list(public.parameters.values())[:-3]
     assert [p.name for p in shared] == list(reference.parameters)
-    assert [p.default for p in shared if p.name != "algo"] == \
-        [p.default for p in reference.parameters.values() if p.name != "algo"]
+    assert [p.default for p in shared if p.name not in ("algo", "max_iter")] == \
+        [p.default for p in reference.parameters.values() if p.name not in ("algo", "max_iter")]
+    assert public.parameters["max_iter"].default is None
     assert public.parameters["algo"].default is None
     assert list(public.parameters)[-3:] == ["refine", "time_limit", "population"]
     assert public.parameters["population"].default is None

@@ -1,6 +1,6 @@
 # Algorithms
 
-The six Am–Fm methods come from Gabrovšek et al. (2020) and build the solution by
+`kap.multiple_hungarian` exposes Am–Fm and Shift. The six Am–Fm methods come from Gabrovšek et al. (2020) and build the solution by
 **merging partites**. Solving the linear assignment problem (LAP) between
 partites `i` and `j` and contracting each matched pair into one vertex gives
 the *quotient graph* `G / M_ij`, which has one partite fewer. The cost row of
@@ -48,7 +48,8 @@ improving move immediately and continue the sweep. A full sweep considers
 `2^(k−1) − 1` subsets; sDV is limited to `k ≤ 16`. `max_iter` caps DV
 sweeps, and a complete cycle without an accepted move ends the search.
 
-`refine` can apply 1DV or sDV after the main `algo` finishes. Shift, 1DV and
+`kap.local_search(costs, start="Am", neighborhood="1dv")` builds a start and applies DV.
+The dispatcher option `refine` can also apply 1DV or sDV after the main `algo` finishes. Shift, 1DV and
 sDV as `algo` choices, and `refine`, require `backend="kap"` (the native core).
 
 References: H.-J. Bandelt, A. Maas and F. C. R. Spieksma, “Local search for
@@ -59,7 +60,7 @@ multidimensional assignment problem,” *Journal of Heuristics* 17, 2011.
 
 ## Iterated local search (ILS)
 
-`algo="ils"` starts with Am followed by DV to convergence. Each step perturbs
+`kap.ils` (or `algo="ils"` in the dispatcher) starts with Am followed by DV to convergence. Each step perturbs
 some nodes of the current solution, runs DV to convergence again, and moves
 to the candidate only if its score strictly improves. After 50 consecutive
 steps without an improvement it moves to the latest candidate anyway, to
@@ -78,8 +79,8 @@ feature; the first best chain wins ties. `refine` selects the neighbourhood
 inside ILS: 1DV by default, or sDV with `refine="sdv"` (`k <= 16`). ILS requires
 `backend="kap"`.
 
-Optional `time_limit` is a finite positive budget in seconds (in Python it
-replaces `max_iter`; the Rust API applies both), checked before
+Optional `time_limit` is a finite positive budget in seconds (an explicit
+`max_iter` also applies; without one the iteration limit is unlimited), checked before
 each perturbation across all chains, after computing the full start solution.
 An in-progress DV descent finishes even if the deadline passes. Only iteration
 budgets are reproducible; a time limit makes results depend on machine speed.
@@ -93,7 +94,7 @@ problem,” *Journal of Heuristics* 17, 2011.
 
 ## Memetic algorithm
 
-`algo="memetic"` maintains a population of DV local optima. It starts from
+`kap.memetic` (or `algo="memetic"` in the dispatcher) maintains a population of DV local optima. It starts from
 Shift followed by DV, mutates members by swapping non-anchor coordinates,
 and crosses parents while preserving their common cliques. Crossover repairs
 duplicate and missing vertices, including absent vertices for unequal sizes.
@@ -106,9 +107,8 @@ Without `time_limit`, `population` sets the target size (default 12, at least
 member. An integer `random_state` makes this mode reproducible, including
 across parallel execution. With a finite positive `time_limit` in seconds,
 the deadline counts from entry, and population size is estimated from the
-budget and measured local-search time unless explicitly supplied. In Python the
-time limit is then the only budget and `max_iter` is ignored (the Rust API
-applies both). An in-progress batch or generation finishes after
+budget and measured local-search time unless explicitly supplied. An explicit generation limit also applies alongside the time limit; without
+one the generation limit is unlimited. An in-progress batch or generation finishes after
 the deadline, so time budgets make results depend on machine speed.
 
 In our [benchmarks](benchmarks.md#solution-quality-of-the-search-methods) memetic did
