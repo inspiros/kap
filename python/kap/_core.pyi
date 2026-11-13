@@ -1,5 +1,6 @@
 import numpy as np
 import numpy.typing as npt
+from typing import overload
 
 __version__: str
 
@@ -20,3 +21,19 @@ def k_assignment(
     population: int | None = None,
     initial: list[list[tuple[int, int]]] | None = None,
 ) -> tuple[list[list[tuple[int, int]]], list[float] | list[int], list[tuple[int, int]]]: ...
+
+
+@overload
+def lower_bound(
+    cost_matrices: list[npt.NDArray[np.int64]],
+    maximize: bool = False,
+    max_iter: int = 300,
+) -> int: ...
+
+
+@overload
+def lower_bound(
+    cost_matrices: list[npt.NDArray[np.float64]],
+    maximize: bool = False,
+    max_iter: int = 300,
+) -> float: ...

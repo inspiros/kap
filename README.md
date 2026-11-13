@@ -67,7 +67,10 @@ Full documentation is in [docs](docs/index.md).
 ## Changes in 0.3
 
 - **Exact solver.** ``kap.exact`` solves equal-size instances with SciPy and HiGHS.
-
+- **Lower bound.** ``kap.lower_bound`` bounds the optimal total cost for equal-size instances
+  (an upper bound with ``maximize=True``); use it to assess a heuristic solution's gap.
+- **Warm starts.** ``initial=`` on ``kap.local_search`` and ``kap.ils`` accepts a complete
+  solution, such as a previous result, and returns a result that is never worse.
 - **Native core.** ``kap.k_assignment`` and ``kap.linear_assignment`` run in Rust for the default
   ``backend="kap"``; the multiple Hungarian methods run up to about 110x faster than the Python
   implementation for small inputs, and 1.2-2x for large ones, where the LAP solves dominate

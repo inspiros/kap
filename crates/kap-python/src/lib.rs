@@ -121,16 +121,14 @@ fn linear_sum_assignment<'py>(
 
 type KResult<A> = (Vec<Vec<(usize, usize)>>, Vec<A>, Vec<(usize, usize)>);
 
-fn try_k_dtype<'py, T>(
+fn try_k_dtype<'py, T, R>(
     py: Python<'py>,
     costs: &[Bound<'py, PyAny>],
-    algo: Algo,
-    opts: &Options,
-    initial: Option<&[Vec<(usize, usize)>]>,
-) -> Option<PyResult<KResult<T::Acc>>>
+    solve: impl FnOnce(&[MatrixView<'_, T>]) -> Result<R, kap::KapError> + Send,
+) -> Option<PyResult<R>>
 where
     T: Cost + Element,
-    T::Acc: Cost<Acc = T::Acc>,
+    R: Send,
 {
     let arrays: Vec<PyReadonlyArray2<'py, T>> = costs
         .iter()
@@ -163,10 +161,27 @@ where
         })
         .collect::<Result<Vec<_>, _>>();
     Some(views.map_err(lap_error).and_then(|views| {
-        py.detach(|| match initial {
-            Some(cliques) => kap::k_assignment_from(&views, cliques, algo, opts),
-            None => kap::k_assignment(&views, algo, opts),
-        })
+        py.detach(|| solve(&views))
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }))
+}
+
+fn try_k_assignment_dtype<'py, T>(
+    py: Python<'py>,
+    costs: &[Bound<'py, PyAny>],
+    algo: Algo,
+    opts: &Options,
+    initial: Option<&[Vec<(usize, usize)>]>,
+) -> Option<PyResult<KResult<T::Acc>>>
+where
+    T: Cost + Element,
+    T::Acc: Cost<Acc = T::Acc>,
+{
+    try_k_dtype::<T, _>(py, costs, |views| {
+        match initial {
+            Some(cliques) => kap::k_assignment_from(views, cliques, algo, opts),
+            None => kap::k_assignment(views, algo, opts),
+        }
         .map(
             |KSolution {
                  cliques,
@@ -175,8 +190,7 @@ where
                  ..
              }| (cliques, costs, free),
         )
-        .map_err(|e| PyValueError::new_err(e.to_string()))
-    }))
+    })
 }
 
 /// Solve a k-partite problem natively; return Python lists.
@@ -269,10 +283,53 @@ fn k_assignment<'py>(
         time_limit,
         population,
     };
-    if let Some(result) = try_k_dtype::<f64>(py, &cost_matrices, algo, &opts, initial.as_deref()) {
+    if let Some(result) =
+        try_k_assignment_dtype::<f64>(py, &cost_matrices, algo, &opts, initial.as_deref())
+    {
         return Ok(result?.into_pyobject(py)?.unbind().into_any());
     }
-    if let Some(result) = try_k_dtype::<i64>(py, &cost_matrices, algo, &opts, initial.as_deref()) {
+    if let Some(result) =
+        try_k_assignment_dtype::<i64>(py, &cost_matrices, algo, &opts, initial.as_deref())
+    {
+        return Ok(result?.into_pyobject(py)?.unbind().into_any());
+    }
+    Err(PyTypeError::new_err(
+        "cost_matrices must contain 2-D numpy arrays, all float64 or all int64 in native byte order",
+    ))
+}
+
+/// Bound the optimal total cost; maximization returns an upper bound.
+#[pyfunction]
+#[pyo3(signature = (cost_matrices, maximize = false, max_iter = 300))]
+fn lower_bound<'py>(
+    py: Python<'py>,
+    cost_matrices: Vec<Bound<'py, PyAny>>,
+    maximize: bool,
+    max_iter: usize,
+) -> PyResult<Py<PyAny>> {
+    let sense = if maximize {
+        Sense::Maximize
+    } else {
+        Sense::Minimize
+    };
+    let opts = kap::LowerBoundOptions {
+        sense,
+        max_iter,
+        upper: None,
+    };
+    if let Some(result) =
+        try_k_dtype::<f64, _>(py, &cost_matrices, |views| kap::lower_bound(views, &opts))
+    {
+        return Ok(result?.into_pyobject(py)?.unbind().into_any());
+    }
+    let opts = kap::LowerBoundOptions {
+        sense,
+        max_iter,
+        upper: None,
+    };
+    if let Some(result) =
+        try_k_dtype::<i64, _>(py, &cost_matrices, |views| kap::lower_bound(views, &opts))
+    {
         return Ok(result?.into_pyobject(py)?.unbind().into_any());
     }
     Err(PyTypeError::new_err(
@@ -286,5 +343,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", kap::VERSION)?;
     m.add_function(wrap_pyfunction!(linear_sum_assignment, m)?)?;
     m.add_function(wrap_pyfunction!(k_assignment, m)?)?;
+    m.add_function(wrap_pyfunction!(lower_bound, m)?)?;
     Ok(())
 }

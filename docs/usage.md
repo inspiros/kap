@@ -46,6 +46,9 @@ See [Algorithms](algorithms.md) and the [benchmarks](benchmarks.md#solution-qual
 ILS, memetic and local search require the native core. Integer seeds make
 iteration-limited randomized runs reproducible; time limits depend on machine speed.
 
+Pass `initial=previous_result` to `kap.local_search` or `kap.ils` to warm start
+from a complete solution; the returned result is never worse than that start.
+
 `kap.k_assignment` dispatches to these methods and retains the original interface:
 
 ```python
@@ -79,3 +82,24 @@ guard limits the model to 150,000 tuples; practical limits are about 100,000.
 A time limit may be exceeded during presolve. If optimality is not proven,
 `kap.ExactTimeoutError` exposes `bound` and `best_cost` when available.
 `maximize=True` maximizes the original costs.
+
+## Lower bound
+
+`kap.lower_bound(cost_matrices, max_iter=300)` bounds the optimal total cost
+for equal-size parts, using the native core. It returns an `int` for integer
+or boolean costs and a `float` otherwise; float bounds are valid up to rounding.
+With `maximize=True` it returns an upper bound. For k=2 it is the exact LAP
+optimum; for k=3 it uses an axial Lagrangian bound, equal at best to the LP
+relaxation bound. For k>=4 it averages over triples, which is loose for
+non-metric costs. `max_iter` is a nonnegative number of subgradient updates per
+triple; zero still evaluates the initial multiplier seeds.
+
+For a heuristic solution with positive total cost:
+
+```python
+import kap
+
+cost = sum(kap.ils(cost_matrices, random_state=0).matching_costs)
+bound = kap.lower_bound(cost_matrices)
+gap = (cost - bound) / cost
+```

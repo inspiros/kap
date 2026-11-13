@@ -110,16 +110,8 @@ def _initial_cliques(initial, sizes):
     return result
 
 
-def _native(cost_matrices, algo, *, max_iter=100, n_trials=1, maximize=False,
-            return_free=False, random_state=None, refine=None, time_limit=None, population=None,
-            initial=None):
-    native = _core()
-    if native is None:
-        raise RuntimeError("the native core is required")
-    cost_matrices, n_partites = _validate_cost_matrices(cost_matrices)
-    if initial is not None:
-        sizes = [cost_matrices[0].shape[0]] + [m.shape[1] for m in cost_matrices[:n_partites - 1]]
-        initial = _initial_cliques(initial, sizes)
+def _promote_cost_matrices(cost_matrices):
+    """Promote validated matrices to the native core's common numeric dtype."""
     for matrix in cost_matrices:
         if matrix.dtype.kind not in "biuf":
             raise TypeError(f"unsupported cost matrix dtype {matrix.dtype}")
@@ -130,7 +122,20 @@ def _native(cost_matrices, algo, *, max_iter=100, n_trials=1, maximize=False,
                 raise OverflowError("uint64 cost matrix values exceed the int64 range "
                                     "supported by the native solver; convert to float64 "
                                     "or use another backend.")
-    matrices = [np.asarray(matrix, dtype=dtype) for matrix in cost_matrices]
+    return [np.asarray(matrix, dtype=dtype) for matrix in cost_matrices]
+
+
+def _native(cost_matrices, algo, *, max_iter=100, n_trials=1, maximize=False,
+            return_free=False, random_state=None, refine=None, time_limit=None, population=None,
+            initial=None):
+    native = _core()
+    if native is None:
+        raise RuntimeError("the native core is required")
+    cost_matrices, n_partites = _validate_cost_matrices(cost_matrices)
+    if initial is not None:
+        sizes = [cost_matrices[0].shape[0]] + [m.shape[1] for m in cost_matrices[:n_partites - 1]]
+        initial = _initial_cliques(initial, sizes)
+    matrices = _promote_cost_matrices(cost_matrices)
     matches, costs, free = native(matrices, algo, maximize=bool(maximize), max_iter=max_iter,
                                   n_trials=n_trials, seed=_seed(random_state), refine=refine,
                                   time_limit=time_limit, population=population, initial=initial)
