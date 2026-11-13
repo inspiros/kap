@@ -35,7 +35,7 @@ where
 
 ## Returns
 
-Python returns an `int` for integer/boolean inputs and a `float` otherwise. Rust returns `Result<T::Acc, KapError>` with i64 or f64 accumulation. Integer bound evaluations use integer arithmetic; floating-point bounds are valid up to rounding.
+Python returns an `int` for integer/boolean inputs and a `float` otherwise. Rust returns `Result<T::Acc, KapError>` with i64 or f64 accumulation. Integer costs give a rigorous bound. Float bounds are computed in floating point and can exceed the true minimum (or fall below the true maximum) by rounding error on the order of machine epsilon times the sum of the cost magnitudes involved. This error can be large when costs of opposite sign nearly cancel.
 
 For a positive minimization solution cost c and bound b, `(c-b)/c` bounds the relative improvement still possible. The example uses this definition; division by zero or a negative c needs a different normalization.
 

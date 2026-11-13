@@ -131,7 +131,10 @@ impl LowerBoundAcc for f64 {
 /// best evaluated axial Lagrangian bound, with integral multipliers for integer
 /// costs. For larger k it averages all triple bounds and rounds integer results
 /// upward, *before* restoring the sign for maximization (giving a floor).
-/// Floating-point bounds are exact up to rounding.
+/// Integer costs give a rigorous bound. Floating-point bounds can exceed the
+/// true minimum (or fall below the true maximum) by rounding error on the order
+/// of machine epsilon times the sum of the cost magnitudes involved. This error
+/// can be large when costs of opposite sign nearly cancel.
 ///
 /// Each triple starts with the pairwise LAP sum and evaluates both `u = 0` and
 /// a seed from the column duals of its second and third matrices. At `u = 0`,

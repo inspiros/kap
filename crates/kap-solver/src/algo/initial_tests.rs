@@ -132,6 +132,50 @@ fn warm_start_quality_and_zero_ils() {
 }
 
 #[test]
+fn warm_start_checks_entries_and_integer_sums_without_sweeps() {
+    for sense in [Sense::Minimize, Sense::Maximize] {
+        let opts = Options {
+            sense,
+            max_iter: 0,
+            ..Options::default()
+        };
+        for (n, value) in [(1, 1i64 << 60), (2, 1i64 << 59)] {
+            // Overflow within a clique, then overflow only in the total.
+            let data = vec![vec![value; n * n]; 10];
+            let mats = views(&[n; 5], &data);
+            let initial: Vec<Vec<_>> = (0..n).map(|v| (0..5).map(|p| (p, v)).collect()).collect();
+            assert_eq!(
+                k_assignment_from(&mats, &initial, Algo::Am, &opts),
+                Err(KapError::Unsupported("cost overflow"))
+            );
+        }
+        let initial = vec![vec![(0, 0), (1, 0)], vec![(0, 1), (1, 1)]];
+        let invalid = if sense == Sense::Minimize {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
+        for value in [f64::NAN, invalid] {
+            // The invalid entry is not used by the start.
+            let data = vec![vec![0.0, value, 0.0, 0.0]];
+            let mats = views(&[2; 2], &data);
+            assert_eq!(
+                k_assignment_from(&mats, &initial, Algo::Am, &opts),
+                Err(crate::LapError::InvalidCost(0, 1).into())
+            );
+        }
+        for value in [i64::MIN, i64::MAX / 4 + 1, i64::MIN / 4] {
+            let data = vec![vec![0, value, 0, 0]];
+            let mats = views(&[2; 2], &data);
+            assert_eq!(
+                k_assignment_from(&mats, &initial, Algo::Am, &opts),
+                Err(crate::LapError::InvalidCost(0, 1).into())
+            );
+        }
+    }
+}
+
+#[test]
 fn warm_start_validation_and_algorithms() {
     let data = vec![vec![0i64; 4]; 3];
     let mats = views(&[2; 3], &data);

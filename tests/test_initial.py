@@ -164,6 +164,29 @@ def test_zero_sweeps_preserve_supplied_cliques():
         assert kap.local_search(matrices, initial=warm, max_sweeps=0, return_free=True) == result
 
 
+@pytest.mark.parametrize('maximize', [False, True])
+@pytest.mark.parametrize('n', [1, 2])
+def test_warm_start_integer_overflow(maximize, n):
+    # n=1 overflows within a clique; n=2 overflows only in the total.
+    value = 2**60 if n == 1 else 2**59
+    matrices = [np.full((n, n), value, dtype=np.int64)] * 10
+    initial = [[(p, v) for p in range(5)] for v in range(n)]
+    with pytest.raises(ValueError, match='cost overflow'):
+        kap.local_search(matrices, initial=initial, max_sweeps=0, maximize=maximize)
+
+
+@pytest.mark.parametrize('maximize,value', [(False, np.nan), (True, np.nan),
+                                           (False, -np.inf), (True, np.inf),
+                                           (False, 2**61), (True, -(2**63))])
+def test_warm_start_validates_all_entries(maximize, value):
+    dtype = np.int64 if isinstance(value, int) else np.float64
+    matrix = np.zeros((2, 2), dtype=dtype)
+    matrix[0, 1] = value  # Not selected by the initial solution.
+    initial = [[(0, v), (1, v)] for v in range(2)]
+    with pytest.raises(ValueError, match=r'invalid cost entry at \(0, 1\)'):
+        kap.local_search([matrix], initial=initial, max_sweeps=0, maximize=maximize)
+
+
 @pytest.mark.parametrize("neighborhood", ("1dv", "sdv"))
 def test_local_search_initial_always_requests_refinement(monkeypatch, neighborhood):
     matrices = random_instance(3, n=3, seed=17, dtype=np.int64)

@@ -20,7 +20,7 @@ def brute(matrices, k, n, maximize):
     scores = []
     for permutations in itertools.product(itertools.permutations(range(n)), repeat=k - 1):
         vertices = [range(n), *permutations]
-        scores.append(sum(m[vertices[p][i], vertices[q][i]]
+        scores.append(sum(m[vertices[p][i], vertices[q][i]].item()
                           for i in range(n) for m, (p, q) in zip(matrices, pairs)))
     return (max if maximize else min)(scores)
 
@@ -39,7 +39,11 @@ def check_partition(result, k, n):
 def test_brute_force(k, n, seed, dtype, maximize):
     matrices = instance(k, n, seed, dtype)
     result = kap.exact(matrices, maximize=maximize, return_free=True)
-    assert sum(result.matching_costs) == pytest.approx(brute(matrices, k, n, maximize))
+    optimum = brute(matrices, k, n, maximize)
+    if dtype is int:
+        assert sum(result.matching_costs) == optimum
+    else:
+        assert sum(result.matching_costs) == pytest.approx(optimum)
     check_partition(result, k, n)
     assert result.free == []
     if dtype is int:
@@ -106,10 +110,78 @@ def test_invalid_solver_partition(monkeypatch):
         kap.exact([np.zeros((2, 2))])
 
 
-def test_original_integer_costs():
-    # Individual costs remain exact even when their sum exceeds float precision.
-    matrices = [np.full((2, 2), 2**54 + i, dtype=np.int64) for i in range(3)]
-    assert kap.exact(matrices).matching_costs == [3 * 2**54 + 3] * 2
+@pytest.mark.parametrize('maximize', [False, True])
+@pytest.mark.parametrize('sign', [-1, 1])
+def test_original_integer_costs(maximize, sign):
+    # Distinct objectives one unit apart, immediately below the float64 guard.
+    base = 2**52 - 2
+    matrices = [sign * np.array([[base, base + 1], [base, base]], dtype=np.int64)]
+    optimum = brute(matrices, 2, 2, maximize)
+    assert sum(kap.exact(matrices, maximize=maximize).matching_costs) == optimum
+
+
+@pytest.mark.parametrize('value', [2**53, -(2**53), np.iinfo(np.int64).min])
+def test_integer_precision_guard(value):
+    matrices = [np.array([[value, value + 1], [value, value]], dtype=np.int64)]
+    with pytest.raises(OverflowError, match='integer costs.*too large.*float64.*rescale'):
+        kap.exact(matrices)
+
+
+def test_integer_precision_guard_sums_with_python_ints():
+    # Per-matrix maxima fit int64, but their sum does not.
+    with pytest.raises(OverflowError, match='integer costs.*float64'):
+        kap.exact([np.full((1, 1), 2**62, dtype=np.int64)] * 6)
+    assert kap.exact([np.array([[2**53]], dtype=np.int64)]).matching_costs == [2**53]
+
+
+@pytest.mark.parametrize('scale', [1, 1e8, 1e-200, 1e200])
+@pytest.mark.parametrize('maximize', [False, True])
+def test_float_objective_scale(scale, maximize):
+    matrices = scale * 1e-8 * np.array([[[0, 2], [1, 1]], [[1, 2], [0, 2]], [[0, 0], [1, 2]]])
+    optimum = brute(matrices, 3, 2, maximize)
+    cost = sum(kap.exact(matrices, maximize=maximize).matching_costs)
+    assert cost == pytest.approx(optimum, rel=1e-9, abs=0)
+
+
+@pytest.mark.parametrize('value', [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize('maximize', [False, True])
+def test_nonfinite_costs(monkeypatch, value, maximize):
+    def unexpected(*args, **kwargs):
+        pytest.fail('non-finite costs must be rejected before calling milp')
+    monkeypatch.setattr(scipy.optimize, 'milp', unexpected)
+    with pytest.raises(ValueError, match='finite costs.*forbidden'):
+        kap.exact([np.array([[0, value], [0, 0]])], maximize=maximize)
+
+
+@pytest.mark.parametrize('scale', [1e-200, 1, 1e200])
+@pytest.mark.parametrize('maximize', [False, True])
+def test_timeout_original_scale(monkeypatch, scale, maximize):
+    matrix = scale * np.array([[1., 2.], [3., 4.]])
+
+    def fake(objective, **kwargs):
+        assert 512 <= np.max(np.abs(objective)) < 1024
+        # Two valid permutation objectives expressed in the solver's scale.
+        return SimpleNamespace(status=1, message='time limit',
+                               mip_dual_bound=objective[0] + objective[3],
+                               fun=objective[1] + objective[2])
+    monkeypatch.setattr(scipy.optimize, 'milp', fake)
+    with pytest.raises(kap.ExactTimeoutError) as error:
+        kap.exact([matrix], maximize=maximize, time_limit=3)
+    assert error.value.bound == pytest.approx(5 * scale, rel=1e-15, abs=0)
+    assert error.value.best_cost == pytest.approx(5 * scale, rel=1e-15, abs=0)
+
+
+def test_integer_objective_is_not_scaled(monkeypatch):
+    matrix = np.array([[2, 3], [5, 7]], dtype=np.int64)
+
+    def fake(objective, **kwargs):
+        np.testing.assert_array_equal(objective, matrix.ravel())
+        return SimpleNamespace(status=1, message='time limit', mip_dual_bound=8, fun=9)
+    monkeypatch.setattr(scipy.optimize, 'milp', fake)
+    with pytest.raises(kap.ExactTimeoutError) as error:
+        kap.exact([matrix])
+    assert error.value.bound == 8
+    assert error.value.best_cost == 9
 
 
 def test_missing_scipy_is_lazy(monkeypatch):

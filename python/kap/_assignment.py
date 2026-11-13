@@ -118,7 +118,8 @@ def _promote_cost_matrices(cost_matrices):
     dtype = np.int64 if all(m.dtype.kind in "biu" for m in cost_matrices) else np.float64
     if dtype is np.int64:
         for matrix in cost_matrices:
-            if matrix.dtype == np.uint64 and matrix.size and matrix.max() > np.iinfo(np.int64).max:
+            if (matrix.dtype.kind == "u" and matrix.dtype.itemsize == 8
+                    and matrix.size and int(matrix.max()) > np.iinfo(np.int64).max):
                 raise OverflowError("uint64 cost matrix values exceed the int64 range "
                                     "supported by the native solver; convert to float64 "
                                     "or use another backend.")
@@ -162,6 +163,8 @@ def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborho
             solution such as a previous result: after unlisted vertices are added
             as singletons, there must be exactly max(part sizes) nodes.
             DV refines this start before all chains.
+            The result is never worse than the start for integer costs; for float
+            costs this holds up to floating-point rounding of the cost sums.
 
     Returns:
         AssignmentResult: Matches, their costs, and optionally free vertices.
@@ -221,6 +224,8 @@ def local_search(cost_matrices, *, neighborhood="1dv", start=None, initial=None,
             whose matches are used, replacing the constructed start. Must be a complete
             solution such as a previous result: after unlisted vertices are added
             as singletons, there must be exactly max(part sizes) nodes.
+            The result is never worse than the start for integer costs; for float
+            costs this holds up to floating-point rounding of the cost sums.
         max_sweeps: Nonnegative maximum number of sweeps.
         maximize: Maximize the score instead of minimizing it.
         return_free: Include unmatched vertices in the result.

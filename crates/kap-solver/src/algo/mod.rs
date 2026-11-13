@@ -116,6 +116,8 @@ where
 /// `initial`. Deterministic starts are replaced, then `opts.refine` is applied.
 /// The initial solution must be complete: after adding singleton nodes its
 /// node count must equal `max(part sizes)`, as in a previous solver result.
+/// The result is no worse than the start for integer costs; for floating-point
+/// costs this holds up to rounding of the cost sums.
 pub fn k_assignment_from<T: Cost>(
     mats: &[MatrixView<'_, T>],
     cliques: &[Vec<(usize, usize)>],
@@ -131,9 +133,29 @@ where
 fn from_cliques<A: Acc + Cost<Acc = A>>(
     root: &Quotient<A>,
     cliques: &[Vec<(usize, usize)>],
+    sense: Sense,
 ) -> Result<Quotient<A>, KapError> {
     use crate::kpartite::NONE;
     let k = root.n_parts();
+    // A zero-sweep start never reaches a LAP. Apply its entry rules here,
+    // including entries not selected by the supplied cliques.
+    for a in 0..k {
+        for b in a + 1..k {
+            let matrix = root.matrix(a, b);
+            for r in 0..root.n_nodes(a) {
+                for c in 0..root.n_nodes(b) {
+                    let value = matrix.get(r, c);
+                    let value = match sense {
+                        Sense::Minimize => Some(value),
+                        Sense::Maximize => value.checked_neg(),
+                    };
+                    if !value.is_some_and(Acc::is_valid) {
+                        return Err(crate::LapError::InvalidCost(r, c).into());
+                    }
+                }
+            }
+        }
+    }
     let mut used: Vec<_> = (0..k).map(|p| vec![false; root.n_nodes(p)]).collect();
     let mut nodes = Vec::new();
     for clique in cliques {
@@ -170,7 +192,7 @@ fn from_cliques<A: Acc + Cost<Acc = A>>(
     }
     // Every vertex of a largest part occurs exactly once across N nodes, so
     // each node has a largest-part vertex. This preserves DV/ILS's invariant.
-    Quotient::from_nodes(root, nodes)
+    Quotient::from_nodes_checked(root, nodes)
 }
 
 fn run<T: Cost>(
@@ -205,7 +227,7 @@ where
     let root = Quotient::root(&problem);
     let mut solver = LapSolver::new();
     let start = initial
-        .map(|cliques| from_cliques(&root, cliques))
+        .map(|cliques| from_cliques(&root, cliques, opts.sense))
         .transpose()?;
     let mut q = match (algo, start) {
         (Algo::Ils, Some(start)) => ils::ils_from(&root, start, opts, &mut solver)?,

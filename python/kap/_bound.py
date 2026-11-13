@@ -13,8 +13,11 @@ def lower_bound(cost_matrices, *, maximize=False, max_iter=300) -> int | float:
     For k=2 this is the exact LAP optimum. For k=3 it is an axial Lagrangian
     bound, which equals at best the LP relaxation bound. For k>=4 it averages
     bounds over triples (scaled by 1/(k-2)); this is loose for non-metric costs.
-    Integer costs give an exact integer bound; float bounds are valid up to
-    rounding. All part sizes must be equal. The native core is required.
+    Integer costs give a rigorous bound. Float bounds are computed in floating
+    point and can exceed the true minimum (or fall below the true maximum) by
+    rounding error on the order of machine epsilon times the sum of the cost
+    magnitudes involved. This error can be large when costs of opposite sign
+    nearly cancel. All part sizes must be equal. The native core is required.
 
     Args:
         cost_matrices: Pairwise cost matrices in combinations order, as for ils.

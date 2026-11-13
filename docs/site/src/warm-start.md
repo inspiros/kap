@@ -54,7 +54,7 @@ Python returns `AssignmentResult(matches, matching_costs, free)`. Each match is 
 
 Rust returns `Result<KSolution<T::Acc>, KapError>`. `cliques` and `costs` correspond to the Python fields. `cost` is their sum, and `free` always lists singletons. Singleton vertices are excluded from both languages' clique lists.
 
-DV and ILS return a solution whose objective is no worse than the supplied start. Passing Am, Bm, Dm, or Shift to Rust `k_assignment_from` returns the supplied start unless `opts.refine` is set.
+DV and ILS return a solution whose objective is no worse than the supplied start. This guarantee is exact for integer costs; for float costs it holds up to floating-point rounding of the cost sums. Passing Am, Bm, Dm, or Shift to Rust `k_assignment_from` returns the supplied start unless `opts.refine` is set.
 
 ## Errors
 
@@ -66,6 +66,7 @@ DV and ILS return a solution whose objective is no worse than the supplied start
 | `OverflowError` | - | All Python matrices are integer or boolean and a `uint64` value exceeds `int64`. |
 | `ValueError` | `KapError::TooManyVertices` | A native part exceeds `u32` vertex capacity. |
 | `ValueError` | `KapError::Lap` | A constituent LAP encounters an invalid numeric entry or an infeasible assignment. |
+| `ValueError` | `KapError::Unsupported("cost overflow")` | An integer clique cost or total overflows while evaluating the supplied start. |
 
 Python raises `RuntimeError` if the required native core is unavailable.
 
@@ -77,6 +78,7 @@ Python raises `RuntimeError` if the required native core is unavailable.
 | - | `KapError::BadOption("initial")` | Rust selects Cm, Em, Fm, or Memetic with supplied cliques. |
 
 Python also rejects non-integer or boolean indices with `ValueError`. ILS and local-search option errors remain as documented on their guide pages.
+All matrix entries are checked against the LAP's numeric rules when a start is supplied, even with zero sweeps.
 
 
 ## Example

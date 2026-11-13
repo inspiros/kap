@@ -250,6 +250,26 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
     /// `NONE` denotes an absent vertex. Every original vertex must occur once,
     /// and every row must contain at least one vertex.
     pub fn from_nodes(root: &Self, nodes: Vec<u32>) -> Result<Self, KapError> {
+        Self::from_nodes_impl::<false>(root, nodes)
+    }
+
+    /// Build a warm start, checking integer clique and total sums for overflow.
+    pub(crate) fn from_nodes_checked(root: &Self, nodes: Vec<u32>) -> Result<Self, KapError> {
+        Self::from_nodes_impl::<true>(root, nodes)
+    }
+
+    fn from_nodes_impl<const CHECKED: bool>(
+        root: &Self,
+        nodes: Vec<u32>,
+    ) -> Result<Self, KapError> {
+        let add = |a: A, b: A| {
+            if CHECKED {
+                a.checked_add(b)
+                    .ok_or(KapError::Unsupported("cost overflow"))
+            } else {
+                Ok(a + b)
+            }
+        };
         let k = root.k_orig;
         if root.n_parts() != k || (0..k).any(|p| root.members(p) != 1 << p) || nodes.len() % k != 0
         {
@@ -277,12 +297,15 @@ impl<A: Acc + Cost<Acc = A>> Quotient<A> {
             for a in 0..k {
                 for b in a + 1..k {
                     if node[a] != NONE && node[b] != NONE {
-                        cost = cost + root.matrix(a, b).get(node[a] as usize, node[b] as usize);
+                        cost = add(
+                            cost,
+                            root.matrix(a, b).get(node[a] as usize, node[b] as usize),
+                        )?;
                     }
                 }
             }
             costs.push(cost);
-            score = score + cost;
+            score = add(score, cost)?;
         }
         if used.iter().flatten().any(|&seen| !seen) {
             return Err(KapError::BadMatching);

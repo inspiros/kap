@@ -1,10 +1,12 @@
 """Exact equal-size k-assignment using SciPy's HiGHS MILP solver."""
 
 import itertools
+import math
 
 import numpy as np
 
 from ._reference.assignment import AssignmentResult, _validate_cost_matrices
+from ._assignment import _promote_cost_matrices
 
 
 class ExactTimeoutError(TimeoutError):
@@ -25,7 +27,13 @@ def exact(cost_matrices, *, maximize=False, time_limit=None, return_free=False,
           max_variables=150_000) -> AssignmentResult:
     """Solve equal-size k-assignment exactly with SciPy's HiGHS MILP solver.
 
-    Float costs are exact only up to HiGHS tolerances. The practical limit is
+    Integer costs are solved exactly when n times the sum of the largest
+    absolute entry in each matrix is at most 2**53; larger inputs raise
+    OverflowError (rescale them). Float objectives are scaled by a power of two
+    so the largest absolute tuple cost lies in [512, 1024), unless all are zero.
+    Float results are optimal within HiGHS's absolute tolerances on that scaled
+    problem, about 1e-9 times the largest tuple cost magnitude. Costs must be
+    finite; +inf forbidden entries are not supported. The practical limit is
     about 1e5 tuples (k=3 n<=45, k=4 n<=17, k=5 n<=10). HiGHS can
     overrun the time limit during presolve on large models.
 
@@ -43,17 +51,22 @@ def exact(cost_matrices, *, maximize=False, time_limit=None, return_free=False,
         ExactTimeoutError: HiGHS stopped at its limit before proving optimality.
     """
     matrices, k = _validate_cost_matrices(cost_matrices)
-    for matrix in matrices:
-        if matrix.dtype.kind not in "biuf":
-            raise TypeError(f"unsupported cost matrix dtype {matrix.dtype}")
-    if all(m.dtype.kind in "biu" for m in matrices):
-        for matrix in matrices:
-            if matrix.dtype == np.uint64 and matrix.size and matrix.max() > np.iinfo(np.int64).max:
-                raise OverflowError("uint64 cost matrix values exceed the int64 range supported by the native solver")
+    promoted = _promote_cost_matrices(matrices)
+    integer = all(m.dtype.kind in "biu" for m in matrices)
     sizes = [matrices[0].shape[0]] + [m.shape[1] for m in matrices[:k - 1]]
     if len(set(sizes)) != 1:
         raise ValueError("exact requires equal part sizes")
     n = sizes[0]
+    if integer:
+        # Convert extrema before abs/sum so neither int64 abs(MIN) nor the
+        # bound itself can overflow. This also bounds every partial tuple sum.
+        upper = n * sum(max(abs(int(m.min())), abs(int(m.max())))
+                        for m in matrices if m.size)
+        if upper > 2**53:
+            raise OverflowError("integer costs are too large to be solved exactly through float64; "
+                                "rescale the costs")
+    if any(not np.isfinite(m).all() for m in promoted):
+        raise ValueError("exact requires finite costs; +inf forbidden entries are not supported")
     if isinstance(max_variables, (bool, np.bool_)) or not isinstance(max_variables, (int, np.integer)):
         raise TypeError("max_variables must be a nonnegative integer")
     if max_variables < 0:
@@ -79,8 +92,17 @@ def exact(cost_matrices, *, maximize=False, time_limit=None, return_free=False,
     pairs = list(itertools.combinations(range(k), 2))
     indices = np.indices((n,) * k).reshape(k, -1)
     objective = np.zeros(nv, dtype=np.float64)
-    for matrix, (p, q) in zip(matrices, pairs):
+    for matrix, (p, q) in zip(promoted, pairs):
         objective += np.asarray(matrix[indices[p], indices[q]], dtype=np.float64)
+    if not np.isfinite(objective).all():
+        raise ValueError("exact requires finite tuple costs; rescale the costs")
+    scale_exponent = 0
+    if not integer:
+        largest = float(np.max(np.abs(objective)))
+        if largest:
+            # ldexp avoids materializing an overflowing scale for subnormals.
+            scale_exponent = 10 - math.frexp(largest)[1]
+            objective = np.ldexp(objective, scale_exponent)
     if maximize:
         objective = -objective
     rows = np.concatenate([p * n + indices[p] for p in range(k)])
@@ -93,7 +115,10 @@ def exact(cost_matrices, *, maximize=False, time_limit=None, return_free=False,
                   constraints=LinearConstraint(constraints, 1, 1), options=options)
     if result.status == 1:
         def restore(value):
-            return None if value is None else (-value if maximize else value)
+            if value is None:
+                return None
+            original = math.ldexp(value, -scale_exponent)
+            return -original if maximize else original
         raise ExactTimeoutError(result.message, bound=restore(getattr(result, "mip_dual_bound", None)),
                                 best_cost=restore(getattr(result, "fun", None)))
     if result.status != 0:

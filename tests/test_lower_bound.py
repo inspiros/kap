@@ -48,13 +48,14 @@ def test_heuristic_cost(k, n, seed, dtype, maximize):
     assert bound >= cost - tol if maximize else bound <= cost + tol
 
 
-@pytest.mark.parametrize('n', [0, 1, 8])
+@pytest.mark.parametrize('n', range(7))
 @pytest.mark.parametrize('dtype', [int, float])
 @pytest.mark.parametrize('maximize', [False, True])
 def test_two_parts(n, dtype, maximize):
     matrices = instance(2, n, 42, dtype)
-    rows, cols = kap.linear_sum_assignment(matrices[0], maximize=maximize)
-    optimum = matrices[0][rows, cols].sum().item()
+    optimum = (max if maximize else min)(
+        sum(matrices[0][r, c].item() for r, c in enumerate(permutation))
+        for permutation in itertools.permutations(range(n)))
     bound = kap.lower_bound(matrices, maximize=maximize)
     if dtype is int:
         assert bound == optimum
@@ -152,6 +153,13 @@ def test_uint64_overflow():
         kap.lower_bound([big])
     # Mixed integer/float inputs follow _native's float promotion.
     assert type(kap.lower_bound([big, np.zeros((2, 2)), big])) is float
+
+
+@pytest.mark.parametrize('solve', [kap.lower_bound, kap.ils, kap.exact])
+@pytest.mark.parametrize('maximize', [False, True])
+def test_big_endian_uint64_overflow(solve, maximize):
+    with pytest.raises(OverflowError, match='uint64.*int64'):
+        solve([np.array([[2**64 - 1]], dtype='>u8')], maximize=maximize)
 
 
 @pytest.mark.parametrize('matrices', [[], [np.zeros((2, 2))] * 2, [np.zeros(3)],

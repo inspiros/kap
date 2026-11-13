@@ -47,6 +47,14 @@ pub trait Acc:
     /// Whether `self` is a permitted entry of a minimization problem
     /// (finite or `+INF` for floats).
     fn is_valid(self) -> bool;
+    /// Add without integer overflow; floating-point sums use ordinary rounding.
+    fn checked_add(self, rhs: Self) -> Option<Self> {
+        Some(self + rhs)
+    }
+    /// Negate without integer overflow.
+    fn checked_neg(self) -> Option<Self> {
+        Some(-self)
+    }
 }
 
 impl Acc for f64 {
@@ -66,6 +74,12 @@ impl Acc for i64 {
         // Leave headroom so that `-x` and the dual updates cannot overflow
         // for any single entry.
         self > i64::MIN / 4 && self < i64::MAX / 4
+    }
+    fn checked_add(self, rhs: Self) -> Option<Self> {
+        self.checked_add(rhs)
+    }
+    fn checked_neg(self) -> Option<Self> {
+        self.checked_neg()
     }
 }
 
