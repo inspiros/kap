@@ -14,7 +14,7 @@ assignment problems (LAPs).
 - [Usage](usage.md): `linear_assignment` and `k_assignment`
 - [Algorithms](algorithms.md): what Am to Fm do and what they cost
 - [Backends](backends.md): the LAP solvers kap can call
-- [Benchmarks](benchmarks.md): native core vs the Python implementation
+- [Benchmarks](benchmarks.md): native core vs the Python implementation; solution quality of ILS and memetic
 
 ## Reference
 

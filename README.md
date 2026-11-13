@@ -137,8 +137,9 @@ There are a few things to note about its parameters:
   ordered as in ``itertools.combination(n, 2)``. For example, $[C_{01}, C_{02}, C_{03}, C_{12}, C_{13}, C_{23}]$.
 - ``algo``: Select ``"Am", "Bm", "Cm", "Dm", "Em", "Fm", "Shift", "1DV", "sDV", "ils"`` or ``"memetic"``.
   The default is ``"ils"`` with the native backend (randomised: pass ``random_state`` for reproducible
-  results) and $\text{C}_m$ with other backends. Use ``"memetic"`` or ``"ils"`` with ``time_limit``
-  for the best result within a time budget.
+  results) and $\text{C}_m$ with other backends. For the best result within a time
+  budget, use ``"ils"`` with ``time_limit`` and ``n_trials`` set to the number of CPU cores
+  ([benchmarks](docs/benchmarks.md#solution-quality-of-the-search-methods)).
 - ``refine``: optionally select ``"1DV"`` or ``"sDV"`` to improve the result after ``algo``; requires ``backend="kap"``.
 - ``max_iter``, ``n_trials``, ``random_state``: control $\text{C}_m$, $\text{E}_m$ and $\text{F}_m$;
   pass an int (or a seeded ``RandomState``/``Generator``) to ``random_state`` for reproducible results.

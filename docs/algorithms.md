@@ -84,6 +84,9 @@ each perturbation across all chains, after computing the full start solution.
 An in-progress DV descent finishes even if the deadline passes. Only iteration
 budgets are reproducible; a time limit makes results depend on machine speed.
 
+In our [benchmarks](benchmarks.md#solution-quality-of-the-search-methods) ILS with
+several chains gave the lowest costs of all methods in kap.
+
 This is the “Chain” method of Karapetyan and Gutin, “Efficient local search
 algorithms for known and new neighborhoods for the multidimensional assignment
 problem,” *Journal of Heuristics* 17, 2011.
@@ -107,6 +110,10 @@ budget and measured local-search time unless explicitly supplied. In Python the
 time limit is then the only budget and `max_iter` is ignored (the Rust API
 applies both). An in-progress batch or generation finishes after
 the deadline, so time budgets make results depend on machine speed.
+
+In our [benchmarks](benchmarks.md#solution-quality-of-the-search-methods) memetic did
+not beat ILS with several chains at equal time; prefer ILS unless you have measured
+otherwise on your data.
 
 kap starts from Shift instead of the paper's Greedy construction and includes
 the unperturbed local optimum in the first generation. Reference: Gutin and

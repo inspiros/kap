@@ -59,4 +59,8 @@ different sizes, some matches are incomplete.
 | `random_state` | seed or `numpy.random.RandomState` for Em, Fm and ILS |
 | `time_limit` | optional budget in seconds for ILS and memetic; when given, `max_iter` is ignored; native-only; only iteration budgets are reproducible |
 
+For the best result within a time budget, use `algo="ils"` with `time_limit` and `n_trials`
+set to the number of CPU cores; in our [benchmarks](benchmarks.md#solution-quality-of-the-search-methods)
+this matched or beat `algo="memetic"`.
+
 Native `algo="memetic"` uses `refine` to select DV, `population` (default 12) and `max_iter` for reproducible generation budgets, or `time_limit` for a budget in seconds with results dependent on machine speed.
