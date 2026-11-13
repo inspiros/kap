@@ -69,3 +69,13 @@ res.free            # with return_free=True, the unmatched vertices
 | `random_state` | Integer seed, `numpy.random.RandomState`, or `Generator` |
 | `time_limit` | Finite positive seconds for native ILS or memetic; applies alongside an explicit `max_iter` |
 | `population` | Memetic population size, at least 2; native-only |
+
+## Exact k-assignment
+
+`kap.exact(cost_matrices, time_limit=60, return_free=True)` solves equal-size
+instances using SciPy's HiGHS MILP solver (`pip install scipy`). It proves
+optimality up to HiGHS floating-point tolerances. The default `max_variables`
+guard limits the model to 150,000 tuples; practical limits are about 100,000.
+A time limit may be exceeded during presolve. If optimality is not proven,
+`kap.ExactTimeoutError` exposes `bound` and `best_cost` when available.
+`maximize=True` maximizes the original costs.

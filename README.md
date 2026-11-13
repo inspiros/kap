@@ -66,6 +66,8 @@ Full documentation is in [docs](docs/index.md).
 
 ## Changes in 0.3
 
+- **Exact solver.** ``kap.exact`` solves equal-size instances with SciPy and HiGHS.
+
 - **Native core.** ``kap.k_assignment`` and ``kap.linear_assignment`` run in Rust for the default
   ``backend="kap"``; the multiple Hungarian methods run up to about 110x faster than the Python
   implementation for small inputs, and 1.2-2x for large ones, where the LAP solves dominate
