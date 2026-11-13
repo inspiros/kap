@@ -1,197 +1,79 @@
-``kap``: $k$-Assignment Problem Solver
-======
-[![Build wheels](https://github.com/inspiros/kap/actions/workflows/build_wheels.yml/badge.svg)](https://github.com/inspiros/kap/actions) [![PyPI](https://img.shields.io/pypi/v/kap)](https://pypi.org/project/kap) [![Downloads](https://static.pepy.tech/badge/kap)](https://pepy.tech/project/kap) [![License](https://img.shields.io/github/license/inspiros/kap)](https://github.com/inspiros/kap/blob/master/LICENSE.txt) [![DOI](https://zenodo.org/badge/731651337.svg)](https://zenodo.org/badge/latestdoi/R_kgDOK5wdCQ)
+# kap
 
-This project implements **Boštjan Gabrovšek**'s Multiple Hungarian Methods for solving the **$k$-Assignment Problem**
-(or **$k$-Partite Graph Matching Problem**), described in [this paper](https://www.mdpi.com/2227-7390/8/11/2050).
+[![Build wheels](https://img.shields.io/github/actions/workflow/status/inspiros/kap/build_wheels.yml)](https://github.com/inspiros/kap/actions/workflows/build_wheels.yml)
+[![Documentation](https://img.shields.io/badge/docs-website-16776d?logo=mdbook&logoColor=white)](https://inspiros.github.io/kap/)
+[![PyPI](https://img.shields.io/pypi/v/kap)](https://pypi.org/project/kap/)
+[![Downloads](https://static.pepy.tech/badge/kap)](https://pepy.tech/project/kap)
+[![License](https://img.shields.io/github/license/inspiros/kap)](LICENSE.txt)
 
-Since 0.3, the algorithms and the Linear Assignment solver run in a native Rust core,
-usable from Python (``kap``) and from Rust (crate [``kap-solver``](crates/kap-solver)).
+![Four-part assignment](https://raw.githubusercontent.com/inspiros/kap/master/assets/kpartite_hero.svg)
 
-## Background
-
-### Problem Formulation
-
-**$k$-Assignment (a.k.a. $k$-Partite Graph Matching) Problem** is the extension of **Linear Assignment
-(Bipartite Graph Matching) Problem**.
-It is also traditionally referred to as **Multidimensional Assignment Problem**.
+`kap` solves k-partite assignment problems from pairwise cost matrices. It partitions vertices into cliques with at most one vertex per part and minimizes the total pairwise cost. The Python package and Rust crate provide heuristics, lower bounds, and linear assignment; Python also provides an exact solver through SciPy and HiGHS.
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/inspiros/kap/master/assets/kpartite_hero.svg" width="480" alt="A 3-partite graph and its optimal 3-assignment: three cliques with costs 23, 4 and 11">
+  <a href="https://inspiros.github.io/kap/"><img src="https://img.shields.io/badge/Read_the_docs-16776d?style=for-the-badge&amp;logo=mdbook&amp;logoColor=white" alt="Read the documentation" /></a>
+  <a href="https://pypi.org/project/kap/"><img src="https://img.shields.io/badge/Install_from_PyPI-3775a9?style=for-the-badge&amp;logo=pypi&amp;logoColor=white" alt="Install from PyPI" /></a>
 </p>
 
-Formally, we seek a $k$-assignment of a given $k$-partite weighted graph $G = (V, E, \omega)$ with the minimum weight:
+## Install
 
-```math
-\min{\sum\limits_{\mathcal{Q}}{\omega(\mathcal{Q})\ |\ \mathcal{Q}\text{ is a }k\text{-assignment in }G}}
-```
-where
-```math
-\omega(\mathcal{Q}) = \sum\limits_{e \in E(G[\mathcal{Q}])}{\omega(e)}
-```
-
-This repository provides the implementation of 6 algorithms proposed by Gabrovšek for solving this problem, 
-which is decomposed into small binary sub-problems and tackled with using the Hungarian procedure.
-While this means we can generalize for an arbitrary number $k$ and use different algorithms other than Hungarian,
-the methods might not be the most efficient for certain cases (e.g. $k = 3$ a.k.a. the **3-index Assignment Problem**).
-
-For more technical details, please refer to the [paper](https://www.mdpi.com/2227-7390/8/11/2050)
-or contact the authors, not me 😂.
-
-### Context
-
-I implemented this code for testing an idea in another project.
-After that, I decided to publish the code so that someone facing a similar problem can use.
-Further maintenance or performance tuning might be limited, but all contribution is welcome.
-
-## Requirements
-
-- **Python 3.10+**
-- ``numpy``
-- optional: ``scipy``, ``lap``, ``lapjv`` or ``munkres``
-  _(alternative backends for the Linear Assignment Problem; the native ``kap`` backend is built in)_
-
-## Installation
-
-Simply run the following command:
-
-```
+```sh
 pip install kap
 ```
 
-Prebuilt wheels (one abi3 wheel per platform, for all Python versions from 3.10) need no compiler.
-Building from source needs a Rust toolchain, see [docs/installation.md](docs/installation.md).
+Python 3.10 or newer and NumPy are required. Rust users can add `kap-solver = "0.3"` to `[dependencies]` and import `kap`.
 
-Full documentation is in [docs](docs/index.md).
+## Examples
+
+Python:
+
+```python
+import numpy as np
+import kap
+
+costs = [np.array([[4, 1], [2, 3]]) for _ in range(3)]
+result = kap.ils(costs, max_iter=10, random_state=0)
+print(result.matches, result.matching_costs)
+```
+
+Rust:
+
+```rust
+use kap::{k_assignment, Algo, MatrixView, Options};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let data = [4i64, 1, 2, 3];
+    let matrix = MatrixView::from_row_major(&data, 2, 2)?;
+    let costs = [matrix, matrix, matrix];
+    let result = k_assignment(&costs, Algo::Ils, &Options::default())?;
+    println!("{:?} {:?}", result.cliques, result.costs);
+    Ok(())
+}
+```
+
+## Functions
+
+| Python function | Purpose |
+|---|---|
+| `ils` | Run iterated local search with independent chains. |
+| `memetic` | Evolve a population of locally optimized solutions. |
+| `local_search` | Improve a starting solution with dimensionwise variation. |
+| `multiple_hungarian` | Run Am–Fm or Shift. |
+| `k_assignment` | Dispatch to a selected k-assignment method. |
+| `exact` | Solve equal-size instances with SciPy and HiGHS. |
+| `lower_bound` | Bound the optimum for equal-size parts. |
+| `linear_sum_assignment` | Solve a rectangular linear assignment. |
+
+See the [documentation](https://inspiros.github.io/kap/) for inputs, Rust APIs, algorithm limits, and benchmarks.
 
 ## Changes in 0.3
 
-- **Exact solver.** ``kap.exact`` solves equal-size instances with SciPy and HiGHS.
-- **Lower bound.** ``kap.lower_bound`` bounds the optimal total cost for equal-size instances
-  (an upper bound with ``maximize=True``); use it to assess a heuristic solution's gap.
-- **Warm starts.** ``initial=`` on ``kap.local_search`` and ``kap.ils`` accepts a complete
-  solution, such as a previous result, and returns a result that is never worse.
-- **Native core.** ``kap.k_assignment`` and ``kap.linear_assignment`` run in Rust for the default
-  ``backend="kap"``; the multiple Hungarian methods run up to about 110x faster than the Python
-  implementation for small inputs, and 1.2-2x for large ones, where the LAP solves dominate
-  ([benchmarks](docs/benchmarks.md)). $\text{F}_m$ is the exception: it now always runs
-  ``max_iter`` steps, so it is slower for $k \geq 4$ but finds lower-cost solutions.
-  Other backends still run the pure Python implementation.
-- **Shift and dimensionwise variation search.** With ``backend="kap"``, ``algo`` accepts
-  ``"Shift"``, ``"1DV"`` and ``"sDV"``; ``refine`` can apply ``"1DV"`` or ``"sDV"`` after
-  the selected algorithm. See [Algorithms](docs/algorithms.md) for their strategies and limits.
-- **New default algorithm.** With ``backend="kap"`` the default ``algo`` is now ``"ils"`` instead of
-  $\text{C}_m$. It finds clearly lower costs on non-metric instances but is randomised; pass
-  ``algo="Cm"`` for the previous deterministic behaviour.
-- **Iterated local search.** Native ``algo="ils"`` perturbs and reoptimizes with DV; supports seeded parallel chains and an optional ``time_limit`` (see [Algorithms](docs/algorithms.md)).
-- **Memetic search.** Native ``algo="memetic"`` evolves DV local optima with mutation and common-clique crossover, using ``population`` and generation or time budgets (see [Algorithms](docs/algorithms.md)).
-- **Algorithms follow the paper.** $\text{C}_m$ is pure steepest descent, $\text{E}_m$ runs independent
-  random trials, and $\text{F}_m$ is a tabu search that may take sideways or worse moves and returns the
-  best solution found. $\text{A}_m$, $\text{B}_m$ and $\text{D}_m$ give the same results as 0.2.3,
-  but $\text{C}_m$, $\text{E}_m$ and $\text{F}_m$ can return different (for $\text{F}_m$, usually lower-cost)
-  solutions. For the same ``random_state``, $\text{E}_m$ and $\text{F}_m$ also draw different random
-  sequences than in 0.2.
-- **Removed** the ``lapsolver`` backend (it no longer builds on recent Python).
-- **Python 3.10+** is required.
-
-## Quick Start
-
-### Solving Linear Assignment Problem
-
-For convenience, we provide ``kap.linear_assignment`` as a wrapper around backend functions.
-The available backends are:
-- ``kap`` (default): built-in native solver (Jonker-Volgenant initialisation + shortest augmenting path,
-  same results as ``scipy``); also available directly as ``kap.linear_sum_assignment``
-- ``scipy``: [``scipy.optimize.linear_sum_assignment``'s documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.linear_sum_assignment.html)
-- ``lap``: https://github.com/gatagat/lap
-- ``lapjv``: https://github.com/src-d/lapjv
-- ``munkres``: https://github.com/bmc/munkres
-
-Note that we currently do **NOT** support sparse matrix.
-For a benchmark, please head to https://github.com/berhane/LAP-solvers.
-
-The interface is unified as ``kap.linear_assignment`` returns a namedtuple of ``matches``,
-``matching_costs`` of matched edges, and optionally a list of ``free``(or unmatched) vertices if called with
-``return_free=True``.
-
-```python
-import numpy as np
-
-from kap import linear_assignment
-
-cost = np.array([
-    [9, 6, 4],
-    [4, 4, 6],
-    [3, 9, 2]
-])
-matching_result = linear_assignment(cost, return_free=True)
-print("Result:", matching_result)
-# Result: AssignmentResult(matches=array([[0, 2],
-#       [1, 1],
-#       [2, 0]]), matching_costs=array([4, 4, 3]), free=[])
-print("Total cost:", sum(matching_result.matching_costs))
-# Total cost: 11
-```
-
-### Solving $k$-Assignment Problem
-
-``kap.k_assignment`` is the equivalence for $k$-Assignment Problem.
-The explicit functions ``kap.ils``, ``kap.memetic``, ``kap.local_search`` and
-``kap.multiple_hungarian`` expose each method directly; ``kap.k_assignment``
-remains available as a dispatcher. Its parameters include:
-- ``cost_matrices``: Sequence of $n (n - 1) / 2$ 2D cost matrices of pairwise matching costs between $n$ partites
-  (might not be able to be represented as a 3D ``np.ndarray`` since partites can have different number of vertices)
-  ordered as in ``itertools.combination(n, 2)``. For example, $[C_{01}, C_{02}, C_{03}, C_{12}, C_{13}, C_{23}]$.
-- ``algo``: Select ``"Am", "Bm", "Cm", "Dm", "Em", "Fm", "Shift", "1DV", "sDV", "ils"`` or ``"memetic"``.
-  The default is ``"ils"`` with the native backend (randomised: pass ``random_state`` for reproducible
-  results) and $\text{C}_m$ with other backends. For the best result within a time
-  budget, use ``kap.ils(costs, time_limit=..., n_chains=os.cpu_count())``
-  ([benchmarks](docs/benchmarks.md#solution-quality-of-the-search-methods)).
-- ``refine``: optionally select ``"1DV"`` or ``"sDV"`` to improve the result after ``algo``; requires ``backend="kap"``.
-- ``max_iter``, ``n_trials``, ``random_state``: control $\text{C}_m$, $\text{E}_m$ and $\text{F}_m$;
-  pass an int (or a seeded ``RandomState``/``Generator``) to ``random_state`` for reproducible results.
-  ``max_iter`` defaults to 100, or unlimited for ILS and memetic with ``time_limit``;
-  when both are explicitly set, the iteration and time limits both apply.
-
-Its return type shares the same structure as that of ``kap.linear_assignment`` but with some small differences:
-- ``matches``: Each element is the list of indices of matched vertices. For example, ``[(0, 0), (1, 1), (2, 0)]``
-  indicates that node 0 of partite 0, node 1 of partite 1, and node 0 of partite 2 are matched together.
-  Note that it is **NOT** necessary for a match to contain at least one vertex from each partite (incomplete graph).
-- ``matching_costs``: Each element is the sum of pairwise costs of all edges formed by the matched vertices.
-
-The following code reproduce the example described in the paper.
-
-```python
-import numpy as np
-
-from kap import k_assignment
-
-costs = [
-    np.array([  # (0, 1)
-        [9, 6, 4],
-        [4, 4, 6],
-        [3, 9, 2]
-    ]),
-    np.array([  # (0, 2)
-        [8, 2, 9],
-        [5, 0, 4],
-        [8, 7, 4]
-    ]),
-    np.array([  # (1, 2)
-        [4, 0, 9],
-        [9, 9, 6],
-        [8, 9, 5]
-    ]),
-]
-matching_result = k_assignment(costs, algo="Em", return_free=True, random_state=0)
-print("Result:", matching_result)
-# Result: AssignmentResult(matches=[[(0, 0), (1, 1), (2, 0)], [(0, 1), (1, 0), (2, 1)], [(0, 2), (1, 2), (2, 2)]], matching_costs=[23, 4, 11], free=[])
-print("Total cost:", sum(matching_result.matching_costs))
-# Total cost: 38
-```
-
-These code blocks are extracted from [examples](examples).
+- The default backend uses a Rust core. ILS is the default k-assignment method with this backend.
+- `ils`, `memetic`, `local_search`, and `multiple_hungarian` expose individual methods. Shift and dimensionwise variation are available in the native core.
+- `exact` uses SciPy and HiGHS; `lower_bound` bounds equal-size instances. `initial` supplies a complete warm start to ILS or local search.
+- Native Cm, Em, and Fm follow the paper's search rules and can return different results from 0.2.3. Fm runs all `max_iter` steps.
+- The `lapsolver` backend was removed. Python 3.10 or newer is required.
 
 ## License
 
-MIT licensed. See [LICENSE.txt](LICENSE.txt).
+[MIT](LICENSE.txt).

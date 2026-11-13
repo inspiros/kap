@@ -1,26 +1,18 @@
 # kap-solver
 
-Rust core of [kap](https://github.com/inspiros/kap): solvers for the k-assignment
-(k-partite matching) problem and a rectangular linear assignment solver.
-
-```toml
-[dependencies]
-kap-solver = "0.3"
-```
+`kap-solver` provides the Rust core of [kap](https://github.com/inspiros/kap). Add `kap-solver = "0.3"` to `[dependencies]` and import the library as `kap`.
 
 ```rust
-use kap::{MatrixView, Sense, linear_sum_assignment};
+use kap::{k_assignment, Algo, MatrixView, Options};
 
-let cost = [4i64, 1, 3, 2, 0, 5, 3, 2, 2];
-let sol = linear_sum_assignment(MatrixView::from_row_major(&cost, 3, 3)?, Sense::Minimize)?;
-assert_eq!(sol.col_ind, vec![1, 0, 2]);
-assert_eq!(sol.cost, 5);
-# Ok::<(), kap::LapError>(())
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let data = [4i64, 1, 2, 3];
+    let matrix = MatrixView::from_row_major(&data, 2, 2)?;
+    let costs = [matrix, matrix, matrix];
+    let result = k_assignment(&costs, Algo::Ils, &Options::default())?;
+    println!("{:?} {:?}", result.cliques, result.costs);
+    Ok(())
+}
 ```
 
-The crate provides the native linear assignment solver and k-assignment
-algorithms, including Am–Fm, Shift, 1DV and sDV. See the
-[algorithm documentation](../../docs/algorithms.md) for their strategies and
-references.
-
-`lower_bound` computes axial Lagrangian bounds on the optimum (integer costs in exact arithmetic) (triple averaging for k >= 4), for equal part sizes; maximization returns an upper bound.
+`k_assignment` runs a selected heuristic; `k_assignment_from` accepts a complete starting solution. `lower_bound` bounds equal-size problems. `linear_sum_assignment` solves rectangular linear assignments. See the [documentation](https://inspiros.github.io/kap/) for inputs and limits.

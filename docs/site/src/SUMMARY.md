@@ -1,0 +1,16 @@
+# Summary
+
+- [Overview](overview.md)
+- [Installation](installation.md)
+- [Input and results](input.md)
+- [Iterated local search](ils.md)
+- [Memetic search](memetic.md)
+- [Local search](local-search.md)
+- [Multiple Hungarian methods](multiple-hungarian.md)
+- [Dispatcher](dispatcher.md)
+- [Warm starts](warm-start.md)
+- [Exact solver](exact.md)
+- [Lower bound](lower-bound.md)
+- [Linear assignment](lap.md)
+- [Algorithms reference](algorithms.md)
+- [Benchmarks](benchmarks.md)

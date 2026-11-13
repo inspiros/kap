@@ -1,8 +1,8 @@
 # Benchmarks
 
-Two measurements: the [speed of the native core](#native-core-against-the-python-implementation)
+Measurements include the [speed of the native core](#native-core-against-the-python-implementation)
 against the Python implementation, and the [solution quality](#solution-quality-of-the-search-methods)
-of ILS and memetic against the multiple Hungarian methods.
+of ILS and memetic against the multiple Hungarian methods, plus comparisons with proven optima and LAP backend timings.
 
 ## Native core against the Python implementation
 
@@ -11,11 +11,10 @@ Python implementation of the same algorithms (`kap._reference.k_assignment`, whi
 runs the multiple Hungarian methods in Python but calls the same native LAP solver).
 kap 0.2.x used other LAP backends, which are not measured here.
 
-Setup: a 144-core lab server, otherwise idle, kap 0.3.0a1 at commit 7ef4e85, Python 3.12,
+Setup: a Linux machine with 4 × Intel Xeon E7-8860 v4 at 2.20 GHz (72 cores, 144 threads) and 503 GB RAM, otherwise idle, kap 0.3.0a1 at commit 7ef4e85, Python 3.12,
 one pinned core per run, single-threaded (`RAYON_NUM_THREADS=1`). Costs are random
 integers in [0, 100) plus uniform noise (float64); n × n matrices; median of 3 seeds;
-`max_iter=100`, `n_trials=1`. Script: `develop/bench_kap.py` (the full results, including
-int64 inputs, are in `develop/bench_kap_server4.csv`). From n = 50 up, int64 inputs run
+`max_iter=100`, `n_trials=1`. From n = 50 up, int64 inputs run
 up to 2.5x faster than float64 in the native core.
 
 | Algo | k | n | native | Python | speedup | cost, native / Python |
@@ -45,7 +44,7 @@ up to 2.5x faster than float64 in the native core.
   quotient graphs, so the speedup is largest for small n and large k, where that overhead
   dominates (up to about 110x for Bm). As n grows the LAP solves dominate, and both versions
   use the same native LAP, so the gap narrows (Am and Dm at n = 500: 1.2-2x).
-- **Bm** also solves fewer LAPs natively, because merges that commute are memoised
+- **Bm** also solves fewer LAPs natively, because merges that commute are memoized
   (see [Algorithms](algorithms.md#cost)).
 - **Cm and Em** follow the paper in the native core, so their results can differ from
   the Python version's; neither is consistently better at k ≥ 4. At k = 3 and n ≥ 50 the
@@ -53,18 +52,18 @@ up to 2.5x faster than float64 in the native core.
 - **Fm** in the native core is a tabu search that always runs all `max_iter` steps,
   while the Python version stops at the first plateau. It is therefore slower for k ≥ 4,
   but finds 1-7% lower costs. Lower `max_iter` to trade quality for time.
-- The native Bm, Cm, Em and Fm also run their neighbourhoods (and Em its trials) in
+- The native Bm, Cm, Em and Fm also run their neighborhoods (and Em its trials) in
   parallel when more than one thread is available; these numbers are single-threaded.
 
 ## Solution quality of the search methods
 
 ILS and memetic (see [Algorithms](algorithms.md)) against Cm and Fm, at equal wall-time
-budgets. Setup: the same 144-core server, kap 0.3.0a1 at commit 1192d61, 16 threads per
+budgets. Setup: the same 4 × Xeon E7-8860 v4 machine, kap 0.3.0a1 at commit 1192d61, 16 threads per
 run (`RAYON_NUM_THREADS=16`, 16 pinned cores, 8 runs side by side), int64 costs,
-minimisation, equal partite sizes. Two instance families after Karapetyan and Gutin:
+minimization, equal part sizes. Two instance families after Karapetyan and Gutin:
 *random* (every pair cost a uniform integer in 1..100) and *geometric* (rounded Euclidean
 distances between uniform random points). 5 seeds per size for random, 2 for geometric.
-Script: `develop/bench_search.py`; results in `develop/bench_search_server4.csv`.
+
 
 The optima are not known, so each number is the **mean % above the best cost any method
 found for that instance** (0.00 means the method found the best-seen cost on every seed).
@@ -91,15 +90,70 @@ Random instances:
 Cm and Fm were not run for k ≥ 6, so their means cover k ≤ 5. At a 10 s budget the means
 are 0.53 (ILS), 0.25 (ILS × 16) and 1.07 (memetic).
 
-- **ILS finds much lower costs than the multiple Hungarian methods on random costs**: within
+- **ILS costs on random instances**: within
   a second its cost is 9-17 % below Cm's.
 - **More chains help more than more time**: 16 chains for 1 s (0.83) are close to one chain
   for 10 s (0.53), and 16 chains for 60 s found the best-seen cost almost everywhere.
-- **Memetic does not beat multi-chain ILS here.** It is close for k ≥ 4 and clearly behind
+- **Memetic does not beat multi-chain ILS here.** It is close for k ≥ 4 and behind
   for k = 3 with large n. Using sDV instead of 1DV inside either method changed the 60 s means
   by less than 0.1.
 - **On geometric instances all methods are close**: ILS and memetic found the same cost on
   every instance at every budget (k = 3, n = 70 and 150; k = 4, n = 50; k = 6, n = 18), and
   Cm was within 0.33 % of it. The differences above are specific to non-metric costs.
-- These are relative comparisons on synthetic instances with equal partite sizes, not gaps
+- These are relative comparisons on synthetic instances with equal part sizes, not gaps
   to the optimum.
+
+
+## ILS and the lower bound against the proven optimum
+
+These measurements used an AMD Ryzen 7 7840H (8 cores, 16 threads), with 16 threads, kap 0.3.0a1, and three seeds per size. `kap.exact` solved all 33 instances to proven optimality. The random and geometric families follow the definitions in the search-quality section above.
+
+ILS columns report the mean percentage above the optimum; parentheses give the number of seeds reaching it. The lower-bound column reports the mean percentage below the optimum. Exact time is the maximum solve time across the three seeds, in seconds.
+
+| Kind | k | n | Exact time max (s) | ILS default (100 iterations) | ILS 1 s, 1 chain | ILS 1 s, 8 chains | lower_bound |
+|---|---|---|---|---|---|---|---|
+| random | 3 | 10 | 0.6 | 0.00 (3) | 0.00 (3) | 0.00 (3) | 0.88 |
+| random | 3 | 20 | 0.5 | 1.84 (0) | 0.00 (3) | 0.00 (3) | 1.00 |
+| random | 3 | 30 | 3.4 | 2.29 (0) | 0.00 (3) | 0.00 (3) | 1.82 |
+| random | 3 | 40 | 16.6 | 1.91 (0) | 0.00 (3) | 0.00 (3) | 2.39 |
+| geometric | 3 | 30 | 1.0 | 0.00 (3) | 0.00 (3) | 0.00 (3) | 0.01 |
+| random | 4 | 8 | 0.3 | 0.00 (3) | 0.00 (3) | 0.00 (3) | 13.71 |
+| random | 4 | 12 | 5.7 | 0.76 (2) | 0.00 (3) | 0.00 (3) | 16.50 |
+| random | 4 | 16 | 28.1 | 1.94 (0) | 0.00 (3) | 0.00 (3) | 20.30 |
+| geometric | 4 | 16 | 13.3 | 0.00 (3) | 0.00 (3) | 0.00 (3) | 0.59 |
+| random | 5 | 8 | 9.8 | 0.43 (1) | 0.00 (3) | 0.00 (3) | 19.79 |
+| random | 6 | 6 | 29.1 | 0.00 (3) | 0.00 (3) | 0.00 (3) | 18.78 |
+
+Both 1 s ILS configurations reached the proven optimum on all 33 instances, while the default 100 iterations missed some random instances. The bound was within 2.39% for these k=3 instances and within 0.59% for the geometric instances, but its random-instance gap reached 20.30% at k=4.
+
+## LAP backends
+
+| Backend | Algorithm | Rectangular | Notes |
+|---|---|---|---|
+| `kap` | Jonker-Volgenant initialization (square) + shortest augmenting path (Crouse 2016) | yes | default; native, built in; optimal like `scipy` (ties may differ on square input) |
+| `scipy` | modified Jonker-Volgenant | yes | |
+| `lap` | Jonker-Volgenant | yes | |
+| `lapjv` | Jonker-Volgenant | no | see measurements below |
+| `munkres` | Hungarian | yes | pure Python, slower in these measurements |
+
+Measured cost of one call, in µs (a Linux machine with 4 × Intel Xeon E7-8860 v4 at 2.20 GHz (72 cores, 144 threads) and 503 GB RAM, one pinned core, kap 0.3.0a1; uniform = random floats in [0, 1), int100 = integers in
+[0, 100) with many ties, geometric = `i*j + noise`, a hard structured case):
+
+| Input | n | kap | scipy | lap | lapjv |
+|---|---|---|---|---|---|
+| uniform | 10 | 2.0 | 1.9 | 2.4 | 2.3 |
+| uniform | 100 | 112 | 340 | 106 | 67 |
+| uniform | 300 | 1 729 | 3 789 | 1 878 | 1 272 |
+| uniform | 1000 | 20 164 | 72 584 | 42 789 | 29 391 |
+| uniform | 2000 | 96 435 | 351 510 | 134 195 | 105 232 |
+| int100 | 1000 | 22 954 | 33 742 | 5 304 | 5 810 |
+| geometric | 1000 | 737 934 | 773 744 | 2 326 726 | 7 385 561 |
+| uniform, n × 2n | 1000 | 20 172 | 19 502 | 28 547 | — |
+
+In these measurements, kap has the lowest time on large uniform and structured square matrices, and stays
+within 0.8-1.0x of scipy on rectangular ones. Square matrices with many ties
+are still 2.5-4x slower than lap/lapjv (work in progress).
+
+kap itself adds about 4 µs per call on top of the backend. For small
+matrices, building the quotient graphs in Python costs far more than the
+LAP itself.

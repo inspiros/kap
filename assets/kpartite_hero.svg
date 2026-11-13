@@ -1,56 +1,170 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="480" height="370" viewBox="0 0 480 370" role="img" aria-labelledby="title desc">
-  <title id="title">An optimal 3-partite assignment</title>
-  <desc id="desc">Three sets of three vertices with all 27 candidate edges. Three colored triangles form an assignment with costs 23, 4, and 11, totaling 38.</desc>
-  <style>
-    text { font-family: system-ui, sans-serif; }
-    .neutral { fill: #8b949e; }
-    .candidates { fill: none; stroke: #8b949e; stroke-width: 1; stroke-opacity: .28; }
-    .chosen { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-    .index { fill: white; font-size: 12px; font-weight: 650; text-anchor: middle; dominant-baseline: central; }
-  </style>
-
-  <!-- Each path lists the three edges from one vertex to the next partite. -->
-  <g class="candidates">
-    <!-- P0 to P1 -->
-    <path d="M70 85 L240 85 M70 85 L240 175 M70 85 L240 265"/>
-    <path d="M70 175 L240 85 M70 175 L240 175 M70 175 L240 265"/>
-    <path d="M70 265 L240 85 M70 265 L240 175 M70 265 L240 265"/>
-    <!-- P1 to P2 -->
-    <path d="M240 85 L410 85 M240 85 L410 175 M240 85 L410 265"/>
-    <path d="M240 175 L410 85 M240 175 L410 175 M240 175 L410 265"/>
-    <path d="M240 265 L410 85 M240 265 L410 175 M240 265 L410 265"/>
-    <!-- P0 to P2 -->
-    <path d="M70 85 Q240 15 410 85 M70 85 Q240 170 410 175 M70 85 Q240 215 410 265"/>
-    <path d="M70 175 Q240 170 410 85 M70 175 Q240 110 410 175 M70 175 Q240 260 410 265"/>
-    <path d="M70 265 Q240 215 410 85 M70 265 Q240 260 410 175 M70 265 Q240 325 410 265"/>
-  </g>
-
-  <!-- The three selected cliques: (0,1,0), (1,0,1), (2,2,2). -->
-  <g class="chosen">
-    <path stroke="#0072b2" d="M70 85 L240 175 L410 85 Q240 15 70 85"/>
-    <path stroke="#d55e00" d="M70 175 L240 85 L410 175 Q240 110 70 175"/>
-    <path stroke="#009e73" d="M70 265 L240 265 L410 265 Q240 325 70 265"/>
-  </g>
-
-  <g class="neutral" font-size="14" font-weight="600" text-anchor="middle">
-    <text x="70" y="38">P0</text><text x="240" y="38">P1</text><text x="410" y="38">P2</text>
-  </g>
-  <!-- Vertex colors identify the clique; numbers are vertex indices. -->
-  <g>
-    <circle cx="70" cy="85" r="15" fill="#0072b2"/><circle cx="240" cy="175" r="15" fill="#0072b2"/><circle cx="410" cy="85" r="15" fill="#0072b2"/>
-    <circle cx="70" cy="175" r="15" fill="#d55e00"/><circle cx="240" cy="85" r="15" fill="#d55e00"/><circle cx="410" cy="175" r="15" fill="#d55e00"/>
-    <circle cx="70" cy="265" r="15" fill="#009e73"/><circle cx="240" cy="265" r="15" fill="#009e73"/><circle cx="410" cy="265" r="15" fill="#009e73"/>
-  </g>
-  <g class="index">
-    <text x="70" y="85">0</text><text x="70" y="175">1</text><text x="70" y="265">2</text>
-    <text x="240" y="85">0</text><text x="240" y="175">1</text><text x="240" y="265">2</text>
-    <text x="410" y="85">0</text><text x="410" y="175">1</text><text x="410" y="265">2</text>
-  </g>
-  <!-- Clique costs follow the same color order as the highlighted edges. -->
-  <g font-size="13" font-weight="600" text-anchor="middle">
-    <text x="105" y="330" fill="#0072b2">23</text>
-    <text x="185" y="330" fill="#d55e00">4</text>
-    <text x="265" y="330" fill="#009e73">11</text>
-    <text x="372" y="330" class="neutral">total 38</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="600" viewBox="0 0 1440 600" role="img" aria-labelledby="title desc">
+<title id="title">A four-part graph partitioned into four cliques</title>
+<desc id="desc">Four outlined columns each contain four vertices. Faint lines show all 96 candidate edges between different parts. Four colored cliques each select one vertex from every column in crossing orders. Each clique contains all six pairwise edges.</desc>
+<rect width="1440" height="600" rx="24" fill="#f6f8f7"/>
+<g fill="#e8eeec" fill-opacity=".55" stroke="#ccd8d4" stroke-width="1">
+<rect x="152" y="80" width="112" height="336" rx="24"/>
+<rect x="488" y="80" width="112" height="336" rx="24"/>
+<rect x="824" y="80" width="112" height="336" rx="24"/>
+<rect x="1160" y="80" width="112" height="336" rx="24"/>
+</g>
+<g font-family="system-ui, sans-serif" fill="#435e57" font-size="20" text-anchor="middle">
+<text x="208" y="56">Part 0</text>
+<text x="544" y="56">Part 1</text>
+<text x="880" y="56">Part 2</text>
+<text x="1216" y="56">Part 3</text>
+</g>
+<g fill="none" stroke="#566e65" stroke-width="1" stroke-opacity=".075">
+<path d="M 208 112 L 544 112"/>
+<path d="M 208 112 L 544 200"/>
+<path d="M 208 112 L 544 288"/>
+<path d="M 208 112 L 544 376"/>
+<path d="M 208 200 L 544 112"/>
+<path d="M 208 200 L 544 200"/>
+<path d="M 208 200 L 544 288"/>
+<path d="M 208 200 L 544 376"/>
+<path d="M 208 288 L 544 112"/>
+<path d="M 208 288 L 544 200"/>
+<path d="M 208 288 L 544 288"/>
+<path d="M 208 288 L 544 376"/>
+<path d="M 208 376 L 544 112"/>
+<path d="M 208 376 L 544 200"/>
+<path d="M 208 376 L 544 288"/>
+<path d="M 208 376 L 544 376"/>
+<path d="M 208 112 L 880 112"/>
+<path d="M 208 112 L 880 200"/>
+<path d="M 208 112 L 880 288"/>
+<path d="M 208 112 L 880 376"/>
+<path d="M 208 200 L 880 112"/>
+<path d="M 208 200 L 880 200"/>
+<path d="M 208 200 L 880 288"/>
+<path d="M 208 200 L 880 376"/>
+<path d="M 208 288 L 880 112"/>
+<path d="M 208 288 L 880 200"/>
+<path d="M 208 288 L 880 288"/>
+<path d="M 208 288 L 880 376"/>
+<path d="M 208 376 L 880 112"/>
+<path d="M 208 376 L 880 200"/>
+<path d="M 208 376 L 880 288"/>
+<path d="M 208 376 L 880 376"/>
+<path d="M 208 112 L 1216 112"/>
+<path d="M 208 112 L 1216 200"/>
+<path d="M 208 112 L 1216 288"/>
+<path d="M 208 112 L 1216 376"/>
+<path d="M 208 200 L 1216 112"/>
+<path d="M 208 200 L 1216 200"/>
+<path d="M 208 200 L 1216 288"/>
+<path d="M 208 200 L 1216 376"/>
+<path d="M 208 288 L 1216 112"/>
+<path d="M 208 288 L 1216 200"/>
+<path d="M 208 288 L 1216 288"/>
+<path d="M 208 288 L 1216 376"/>
+<path d="M 208 376 L 1216 112"/>
+<path d="M 208 376 L 1216 200"/>
+<path d="M 208 376 L 1216 288"/>
+<path d="M 208 376 L 1216 376"/>
+<path d="M 544 112 L 880 112"/>
+<path d="M 544 112 L 880 200"/>
+<path d="M 544 112 L 880 288"/>
+<path d="M 544 112 L 880 376"/>
+<path d="M 544 200 L 880 112"/>
+<path d="M 544 200 L 880 200"/>
+<path d="M 544 200 L 880 288"/>
+<path d="M 544 200 L 880 376"/>
+<path d="M 544 288 L 880 112"/>
+<path d="M 544 288 L 880 200"/>
+<path d="M 544 288 L 880 288"/>
+<path d="M 544 288 L 880 376"/>
+<path d="M 544 376 L 880 112"/>
+<path d="M 544 376 L 880 200"/>
+<path d="M 544 376 L 880 288"/>
+<path d="M 544 376 L 880 376"/>
+<path d="M 544 112 L 1216 112"/>
+<path d="M 544 112 L 1216 200"/>
+<path d="M 544 112 L 1216 288"/>
+<path d="M 544 112 L 1216 376"/>
+<path d="M 544 200 L 1216 112"/>
+<path d="M 544 200 L 1216 200"/>
+<path d="M 544 200 L 1216 288"/>
+<path d="M 544 200 L 1216 376"/>
+<path d="M 544 288 L 1216 112"/>
+<path d="M 544 288 L 1216 200"/>
+<path d="M 544 288 L 1216 288"/>
+<path d="M 544 288 L 1216 376"/>
+<path d="M 544 376 L 1216 112"/>
+<path d="M 544 376 L 1216 200"/>
+<path d="M 544 376 L 1216 288"/>
+<path d="M 544 376 L 1216 376"/>
+<path d="M 880 112 L 1216 112"/>
+<path d="M 880 112 L 1216 200"/>
+<path d="M 880 112 L 1216 288"/>
+<path d="M 880 112 L 1216 376"/>
+<path d="M 880 200 L 1216 112"/>
+<path d="M 880 200 L 1216 200"/>
+<path d="M 880 200 L 1216 288"/>
+<path d="M 880 200 L 1216 376"/>
+<path d="M 880 288 L 1216 112"/>
+<path d="M 880 288 L 1216 200"/>
+<path d="M 880 288 L 1216 288"/>
+<path d="M 880 288 L 1216 376"/>
+<path d="M 880 376 L 1216 112"/>
+<path d="M 880 376 L 1216 200"/>
+<path d="M 880 376 L 1216 288"/>
+<path d="M 880 376 L 1216 376"/>
+</g>
+<g fill="none" stroke="#16776d" stroke-width="3" stroke-opacity=".88" stroke-linecap="round">
+<path d="M 208 112 L 544 288"/>
+<path d="M 208 112 Q 544 204 880 200"/>
+<path d="M 208 112 Q 712 180 1216 376"/>
+<path d="M 544 288 L 880 200"/>
+<path d="M 544 288 Q 880 284 1216 376"/>
+<path d="M 880 200 L 1216 376"/>
+</g>
+<g fill="none" stroke="#4c6fa2" stroke-width="3" stroke-opacity=".88" stroke-linecap="round">
+<path d="M 208 200 L 544 112"/>
+<path d="M 208 200 Q 544 240 880 376"/>
+<path d="M 208 200 Q 712 308 1216 288"/>
+<path d="M 544 112 L 880 376"/>
+<path d="M 544 112 Q 880 248 1216 288"/>
+<path d="M 880 376 L 1216 288"/>
+</g>
+<g fill="none" stroke="#a16645" stroke-width="3" stroke-opacity=".88" stroke-linecap="round">
+<path d="M 208 288 L 544 376"/>
+<path d="M 208 288 Q 544 248 880 112"/>
+<path d="M 208 288 Q 712 180 1216 200"/>
+<path d="M 544 376 L 880 112"/>
+<path d="M 544 376 Q 880 240 1216 200"/>
+<path d="M 880 112 L 1216 200"/>
+</g>
+<g fill="none" stroke="#865d96" stroke-width="3" stroke-opacity=".88" stroke-linecap="round">
+<path d="M 208 376 L 544 200"/>
+<path d="M 208 376 Q 544 284 880 288"/>
+<path d="M 208 376 Q 712 308 1216 112"/>
+<path d="M 544 200 L 880 288"/>
+<path d="M 544 200 Q 880 204 1216 112"/>
+<path d="M 880 288 L 1216 112"/>
+</g>
+<g stroke="#ffffff" stroke-width="3">
+<circle cx="208" cy="112" r="13" fill="#16776d"/>
+<circle cx="544" cy="288" r="13" fill="#16776d"/>
+<circle cx="880" cy="200" r="13" fill="#16776d"/>
+<circle cx="1216" cy="376" r="13" fill="#16776d"/>
+<circle cx="208" cy="200" r="13" fill="#4c6fa2"/>
+<circle cx="544" cy="112" r="13" fill="#4c6fa2"/>
+<circle cx="880" cy="376" r="13" fill="#4c6fa2"/>
+<circle cx="1216" cy="288" r="13" fill="#4c6fa2"/>
+<circle cx="208" cy="288" r="13" fill="#a16645"/>
+<circle cx="544" cy="376" r="13" fill="#a16645"/>
+<circle cx="880" cy="112" r="13" fill="#a16645"/>
+<circle cx="1216" cy="200" r="13" fill="#a16645"/>
+<circle cx="208" cy="376" r="13" fill="#865d96"/>
+<circle cx="544" cy="200" r="13" fill="#865d96"/>
+<circle cx="880" cy="288" r="13" fill="#865d96"/>
+<circle cx="1216" cy="112" r="13" fill="#865d96"/>
+</g>
+<g font-family="system-ui, sans-serif" fill="#203f36">
+<text x="64" y="480" font-size="32" font-weight="700">kap</text>
+<text x="64" y="520" font-size="24">k-partite assignment</text>
+<text x="64" y="560" font-size="20">partition the vertices into cliques of minimum total pairwise cost</text>
+</g>
 </svg>

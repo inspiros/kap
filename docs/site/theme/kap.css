@@ -1,0 +1,10 @@
+:root { --kap-accent: #16776d; }
+.content a { color: var(--links); text-decoration-color: var(--kap-accent); }
+.content table { border-collapse: collapse; width: 100%; }
+.content th, .content td { padding: .55em .75em; }
+.lang-tabs { margin: 1.2em 0; }
+.language-buttons { display: flex; gap: .4em; margin-bottom: .4em; }
+.language-buttons button { padding: .35em .9em; border: 1px solid var(--kap-accent); border-radius: .25em; color: var(--fg); background: var(--bg); cursor: pointer; }
+.language-buttons button[aria-pressed="true"] { color: white; background: var(--kap-accent); }
+.language-buttons button:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+.lang-tabs pre[hidden] { display: none; }

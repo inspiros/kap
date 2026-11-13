@@ -1,0 +1,8 @@
+[book]
+title = "kap"
+language = "en"
+src = "src"
+
+[output.html]
+additional-css = ["theme/kap.css"]
+additional-js = ["theme/languages.js"]
