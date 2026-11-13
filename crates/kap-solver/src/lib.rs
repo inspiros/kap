@@ -8,9 +8,11 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod algo;
 pub mod kpartite;
 pub mod lap;
+pub mod lower_bound;
 
 pub use algo::{Algo, Dv, Options, k_assignment, k_assignment_from};
 pub use kpartite::{KPartite, KSolution, KapError, Quotient};
+pub use lower_bound::{LowerBoundAcc, LowerBoundOptions, lower_bound};
 
 pub use lap::{
     Acc, Cost, Duals, LapError, LapSolution, LapSolver, MatrixView, Sense, linear_sum_assignment,

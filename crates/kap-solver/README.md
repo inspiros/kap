@@ -22,3 +22,5 @@ The crate provides the native linear assignment solver and k-assignment
 algorithms, including Am–Fm, Shift, 1DV and sDV. See the
 [algorithm documentation](../../docs/algorithms.md) for their strategies and
 references.
+
+`lower_bound` computes axial Lagrangian bounds on the optimum (integer costs in exact arithmetic) (triple averaging for k >= 4), for equal part sizes; maximization returns an upper bound.
