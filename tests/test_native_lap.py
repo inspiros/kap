@@ -154,3 +154,29 @@ def test_default_backend_is_native():
     np.testing.assert_array_equal(default.matches, native.matches)
     rows, cols = scipy_lsa(cost)
     np.testing.assert_array_equal(default.matches, np.stack([rows, cols]).T)
+
+
+@pytest.mark.parametrize("maximize", (False, True))
+def test_int64_jv_overflow_uses_exact_sap_fallback(maximize):
+    m = np.iinfo(np.int64).max // 4 - 1
+    cost = np.array([[-m, m], [m, -m]], dtype=np.int64)
+    rows, cols = kap.linear_sum_assignment(cost, maximize=maximize)
+    assert sum(int(cost[i, j]) for i, j in zip(rows, cols)) == (2 * m if maximize else -2 * m)
+    # The k-assignment entry point uses the same LAP implementation.
+    result = kap.multiple_hungarian([cost], method="Am", maximize=maximize)
+    assert sum(result.matching_costs) == (2 * m if maximize else -2 * m)
+
+
+@pytest.mark.parametrize("maximize", (False, True))
+@pytest.mark.parametrize("sign", (-1, 1))
+def test_int64_total_overflow_is_reported_and_solver_is_reusable(maximize, sign):
+    m = np.iinfo(np.int64).max // 4 - 1
+    with pytest.raises(OverflowError, match="integer overflow"):
+        kap.linear_sum_assignment(np.full((5, 5), sign * m, dtype=np.int64), maximize=maximize)
+    rows, cols = kap.linear_sum_assignment(np.array([[4, 1], [2, 3]], dtype=np.int64))
+    assert list(zip(rows, cols)) == [(0, 1), (1, 0)]
+
+
+def test_int64_minimum_is_rejected_before_maximize_negation():
+    with pytest.raises(ValueError, match="invalid numeric entries"):
+        kap.linear_sum_assignment(np.array([[np.iinfo(np.int64).min, 0]], dtype=np.int64), maximize=True)

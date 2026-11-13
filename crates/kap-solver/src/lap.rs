@@ -8,8 +8,9 @@
 //! For an `nr x nc` matrix, `min(nr, nc)` pairs are returned, so every row (or
 //! every column, whichever side is smaller) is matched. Costs are widened to an
 //! accumulator type ([`Cost::Acc`]): `f64` for floating-point input, `i64` for
-//! integer input. Integer solving is exact as long as sums of `2 * min(nr, nc)`
-//! entries fit in `i64`.
+//! integer input. Integer arithmetic is checked: unrepresentable intermediate
+//! values or total costs return [`LapError::Overflow`]. If JV dual updates
+//! overflow, solving restarts with the shortest augmenting path method.
 //!
 //! For floating-point input, `+inf` marks a forbidden pair; `NaN` and `-inf`
 //! are rejected (`+inf` when maximizing is rejected too, `-inf` marks a
@@ -55,6 +56,20 @@ pub trait Acc:
     fn checked_add(self, rhs: Self) -> Option<Self> {
         Some(self + rhs)
     }
+    /// Compute a value while recording overflow for a checked scan.
+    fn overflowing_add(self, rhs: Self) -> (Self, bool) {
+        match self.checked_add(rhs) {
+            Some(value) => (value, false),
+            None => (Self::ZERO, true),
+        }
+    }
+    /// Compute a difference while recording overflow for a checked scan.
+    fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
+        match self.checked_sub(rhs) {
+            Some(value) => (value, false),
+            None => (Self::ZERO, true),
+        }
+    }
     /// Negate without integer overflow.
     fn checked_neg(self) -> Option<Self> {
         Some(-self)
@@ -93,12 +108,20 @@ impl Acc for i64 {
     }
     #[inline]
     fn is_valid(self) -> bool {
-        // Leave headroom so that `-x` and the dual updates cannot overflow
-        // for any single entry.
+        // Keep the existing per-entry headroom; arithmetic across entries
+        // is checked separately in the solver.
         self > i64::MIN / 4 && self < i64::MAX / 4
     }
     fn checked_add(self, rhs: Self) -> Option<Self> {
         self.checked_add(rhs)
+    }
+    #[inline]
+    fn overflowing_add(self, rhs: Self) -> (Self, bool) {
+        self.overflowing_add(rhs)
+    }
+    #[inline]
+    fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
+        self.overflowing_sub(rhs)
     }
     fn checked_neg(self) -> Option<Self> {
         self.checked_neg()
@@ -146,6 +169,8 @@ pub enum LapError {
     InvalidCost(usize, usize),
     /// No complete assignment avoids the forbidden (infinite) entries.
     Infeasible,
+    /// An integer intermediate value, dual, or total cost does not fit the accumulator.
+    Overflow,
 }
 
 impl fmt::Display for LapError {
@@ -154,6 +179,7 @@ impl fmt::Display for LapError {
             LapError::BadShape => write!(f, "matrix shape or strides do not fit the data"),
             LapError::InvalidCost(i, j) => write!(f, "invalid cost entry at ({i}, {j})"),
             LapError::Infeasible => write!(f, "cost matrix is infeasible"),
+            LapError::Overflow => write!(f, "integer overflow in LAP arithmetic"),
         }
     }
 }
@@ -321,6 +347,47 @@ fn assert_in_range(j: usize, n: usize) {
     debug_assert!(j < n, "index {j} out of range {n}");
 }
 
+#[inline]
+fn add<A: Acc>(x: A, y: A) -> Result<A, LapError> {
+    x.checked_add(y).ok_or(LapError::Overflow)
+}
+
+#[inline]
+fn sub<A: Acc>(x: A, y: A) -> Result<A, LapError> {
+    x.checked_sub(y).ok_or(LapError::Overflow)
+}
+
+/// A scan may use wrapped temporary values, but must check before consuming
+/// its result or deriving an assignment/path from it. One check per scan keeps
+/// vectorizable reductions free of per-entry error branches.
+#[derive(Default)]
+struct Arithmetic {
+    overflow: bool,
+}
+
+impl Arithmetic {
+    #[inline]
+    fn add<A: Acc>(&mut self, x: A, y: A) -> A {
+        let (value, overflow) = x.overflowing_add(y);
+        self.overflow |= overflow;
+        value
+    }
+    #[inline]
+    fn sub<A: Acc>(&mut self, x: A, y: A) -> A {
+        let (value, overflow) = x.overflowing_sub(y);
+        self.overflow |= overflow;
+        value
+    }
+    #[inline]
+    fn check(self) -> Result<(), LapError> {
+        if self.overflow {
+            Err(LapError::Overflow)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 impl<A: Acc> LapSolver<A> {
     pub fn new() -> Self {
         LapSolver {
@@ -373,6 +440,34 @@ impl<A: Acc> LapSolver<A> {
     {
         self.load(m, sense)?;
         let (nr, nc) = (self.nr, self.nc);
+        self.reset_assignment();
+        let jv = nr == nc && nr >= 2 && !self.has_forbidden;
+        let result = match self.jv_mode {
+            JvMode::Lapjv if jv => self.jv_init().and_then(|()| self.jv_augment()),
+            JvMode::Fused if jv => self.jv_init().and_then(|()| self.jv_augment_fused()),
+            JvMode::InitThenSap if jv => (|| {
+                self.jv_init()?;
+                self.jv_row_duals()?;
+                let free = std::mem::take(&mut self.free);
+                let r = self.sap_rows(free.iter().copied());
+                self.free = free;
+                r
+            })(),
+            _ => self.sap_rows(0..nr),
+        };
+        if matches!(result, Err(LapError::Overflow)) && jv && self.jv_mode != JvMode::Off {
+            // JV reduction transfer can drift by an arbitrary dual offset even
+            // when the optimum fits. Discard all partial duals and assignments.
+            self.reset_assignment();
+            self.sap_rows(0..nr)?;
+        } else {
+            result?;
+        }
+        self.solution(&m)
+    }
+
+    fn reset_assignment(&mut self) {
+        let (nr, nc) = (self.nr, self.nc);
         self.u.clear();
         self.u.resize(nr, A::ZERO);
         self.v.clear();
@@ -387,31 +482,6 @@ impl<A: Acc> LapSolver<A> {
         self.sr.resize(nr, false);
         self.sc.resize(nc, false);
         self.remaining.resize(nc, 0);
-
-        let jv = nr == nc && nr >= 2 && !self.has_forbidden;
-        match self.jv_mode {
-            JvMode::Lapjv if jv => {
-                self.jv_init();
-                self.jv_augment();
-                return Ok(self.solution(&m));
-            }
-            JvMode::Fused if jv => {
-                self.jv_init();
-                self.jv_augment_fused();
-                return Ok(self.solution(&m));
-            }
-            JvMode::InitThenSap if jv => {
-                self.jv_init();
-                self.jv_row_duals();
-                let free = std::mem::take(&mut self.free);
-                let r = self.sap_rows(free.iter().copied());
-                self.free = free;
-                r?;
-                return Ok(self.solution(&m));
-            }
-            _ => self.sap_rows(0..nr)?,
-        }
-        Ok(self.solution(&m))
     }
 
     /// Crouse's shortest augmenting path for each of `rows` (free rows with
@@ -419,18 +489,18 @@ impl<A: Acc> LapSolver<A> {
     fn sap_rows(&mut self, rows: impl Iterator<Item = usize>) -> Result<(), LapError> {
         let (nr, nc) = (self.nr, self.nc);
         for cur_row in rows {
-            let (sink, min_val) = self.augmenting_path(cur_row).ok_or(LapError::Infeasible)?;
+            let (sink, min_val) = self.augmenting_path(cur_row)?.ok_or(LapError::Infeasible)?;
             // Update duals.
-            self.u[cur_row] = self.u[cur_row] + min_val;
+            self.u[cur_row] = add(self.u[cur_row], min_val)?;
             for i in 0..nr {
                 if self.sr[i] && i != cur_row {
                     let j = self.col4row[i];
-                    self.u[i] = self.u[i] + (min_val - self.shortest[j]);
+                    self.u[i] = add(self.u[i], sub(min_val, self.shortest[j])?)?;
                 }
             }
             for j in 0..nc {
                 if self.sc[j] {
-                    self.v[j] = self.v[j] - (min_val - self.shortest[j]);
+                    self.v[j] = sub(self.v[j], sub(min_val, self.shortest[j])?)?;
                 }
             }
             // Augment along the path back to cur_row.
@@ -449,23 +519,26 @@ impl<A: Acc> LapSolver<A> {
 
     /// Row potentials after `jv_init`: tight for matched rows, the row minimum
     /// of the reduced costs for free rows.
-    fn jv_row_duals(&mut self) {
+    fn jv_row_duals(&mut self) -> Result<(), LapError> {
         let n = self.nr;
         for i in 0..n {
             let row = &self.cost[i * n..(i + 1) * n];
             self.u[i] = if self.col4row[i] != NONE {
-                row[self.col4row[i]] - self.v[self.col4row[i]]
+                sub(row[self.col4row[i]], self.v[self.col4row[i]])?
             } else {
                 let mut mn = A::INF;
+                let mut arithmetic = Arithmetic::default();
                 for j in 0..n {
-                    let h = row[j] - self.v[j];
+                    let h = arithmetic.sub(row[j], self.v[j]);
                     if h < mn {
                         mn = h;
                     }
                 }
+                arithmetic.check()?;
                 mn
             };
         }
+        Ok(())
     }
 
     /// Dual potentials of the last successful [`solve`](Self::solve).
@@ -497,7 +570,11 @@ impl<A: Acc> LapSolver<A> {
         let neg = sense == Sense::Maximize;
         let conv = |x: T| {
             let a = x.widen();
-            if neg { -a } else { a }
+            if neg {
+                a.checked_neg().unwrap_or(A::INF)
+            } else {
+                a
+            }
         };
         self.cost.clear();
         self.cost.resize(nr * nc, A::ZERO);
@@ -553,7 +630,7 @@ impl<A: Acc> LapSolver<A> {
     /// column reduction, reduction transfer and two augmenting row reduction
     /// passes. Fills `col4row`, `row4col`, `v` and leaves the unassigned rows
     /// in `free`; matched rows are tight.
-    fn jv_init(&mut self) {
+    fn jv_init(&mut self) -> Result<(), LapError> {
         let LapSolver {
             cost: c,
             nr,
@@ -608,13 +685,15 @@ impl<A: Acc> LapSolver<A> {
                 let row = &c[i * n..(i + 1) * n];
                 let vv = &v[..n];
                 let mut mn = A::INF;
+                let mut arithmetic = Arithmetic::default();
                 for j in 0..n {
-                    let h = row[j] - vv[j];
+                    let h = arithmetic.sub(row[j], vv[j]);
                     if j != j1 && h < mn {
                         mn = h;
                     }
                 }
-                v[j1] = v[j1] - mn;
+                arithmetic.check()?;
+                v[j1] = sub(v[j1], mn)?;
             }
         }
 
@@ -634,12 +713,13 @@ impl<A: Acc> LapSolver<A> {
                 k += 1;
                 let row = &c[i * n..(i + 1) * n];
                 let vv = &v[..n];
-                let mut umin = row[0] - vv[0];
+                let mut umin = sub(row[0], vv[0])?;
                 let mut j1 = 0;
                 let mut j2 = NONE;
                 let mut usub = A::INF;
+                let mut arithmetic = Arithmetic::default();
                 for j in 1..n {
-                    let h = row[j] - vv[j];
+                    let h = arithmetic.sub(row[j], vv[j]);
                     if h < usub {
                         if h >= umin {
                             usub = h;
@@ -652,10 +732,11 @@ impl<A: Acc> LapSolver<A> {
                         }
                     }
                 }
+                arithmetic.check()?;
                 let mut i0 = y[j1];
                 let strict = umin < usub;
                 if strict {
-                    v[j1] = v[j1] - (usub - umin);
+                    v[j1] = sub(v[j1], sub(usub, umin)?)?;
                 } else if i0 != NONE {
                     j1 = j2;
                     i0 = y[j2];
@@ -676,10 +757,11 @@ impl<A: Acc> LapSolver<A> {
             }
             free.truncate(nf);
         }
+        Ok(())
     }
 
     /// LAPJV's augmentation phase for the rows left in `free` by `jv_init`.
-    fn jv_augment(&mut self) {
+    fn jv_augment(&mut self) -> Result<(), LapError> {
         let LapSolver {
             cost: c,
             nr,
@@ -699,11 +781,13 @@ impl<A: Acc> LapSolver<A> {
         // collist: [0, low) ready, [low, up) at the current minimum, [up, n) todo.
         for &fr in free.iter() {
             let row = &c[fr * n..(fr + 1) * n];
+            let mut arithmetic = Arithmetic::default();
             for j in 0..n {
-                d[j] = row[j] - v[j];
+                d[j] = arithmetic.sub(row[j], v[j]);
                 pred[j] = fr;
                 collist[j] = j;
             }
+            arithmetic.check()?;
             let (mut low, mut up, mut ready) = (0usize, 0usize, 0usize);
             let mut mn = A::ZERO;
             let endofpath = 'search: loop {
@@ -736,14 +820,14 @@ impl<A: Acc> LapSolver<A> {
                 low += 1;
                 let i = y[j1];
                 let rowi = &c[i * n..(i + 1) * n];
-                let h = rowi[j1] - v[j1] - mn;
+                let h = sub(sub(rowi[j1], v[j1])?, mn)?;
                 let (vv, dd, pp, yy) = (&v[..n], &mut d[..n], &mut pred[..n], &y[..n]);
                 for k in up..n {
                     let j = collist[k];
                     assert_in_range(j, n);
                     // SAFETY: collist is a permutation of 0..n; all slices have length n.
                     unsafe {
-                        let v2 = *rowi.get_unchecked(j) - *vv.get_unchecked(j) - h;
+                        let v2 = sub(sub(*rowi.get_unchecked(j), *vv.get_unchecked(j))?, h)?;
                         if v2 < *dd.get_unchecked(j) {
                             *pp.get_unchecked_mut(j) = i;
                             if v2 == mn {
@@ -759,7 +843,7 @@ impl<A: Acc> LapSolver<A> {
                 }
             };
             for &j in &collist[..ready] {
-                v[j] = v[j] + (d[j] - mn);
+                v[j] = add(v[j], sub(d[j], mn)?)?;
             }
             let mut j = endofpath;
             loop {
@@ -772,8 +856,9 @@ impl<A: Acc> LapSolver<A> {
             }
         }
         for i in 0..n {
-            u[i] = c[i * n + x[i]] - v[x[i]];
+            u[i] = sub(c[i * n + x[i]], v[x[i]])?;
         }
+        Ok(())
     }
 
     /// Augmentation phase for the rows left in `free` by `jv_init`: LAPJV's
@@ -782,7 +867,7 @@ impl<A: Acc> LapSolver<A> {
     /// the row being scanned is the last one at the current distance. A row
     /// that still has others waiting behind it is relaxed without tracking
     /// the minimum, as in LAPJV, since a later pass would overwrite it.
-    fn jv_augment_fused(&mut self) {
+    fn jv_augment_fused(&mut self) -> Result<(), LapError> {
         let LapSolver {
             cost: c,
             nr,
@@ -809,11 +894,13 @@ impl<A: Acc> LapSolver<A> {
             let mut idx = 0;
             {
                 let (vv, yy) = (&v[..n], &y[..n]);
+                let mut arithmetic = Arithmetic::default();
                 for j in 0..n {
-                    d[j] = row[j] - vv[j];
+                    d[j] = arithmetic.sub(row[j], vv[j]);
                     pred[j] = fr;
                     collist[j] = j;
                 }
+                arithmetic.check()?;
                 for j in 0..n {
                     let h = d[j];
                     if h < lowest || (h == lowest && yy[j] == NONE) {
@@ -842,7 +929,7 @@ impl<A: Acc> LapSolver<A> {
                     low += 1;
                     let i = y[j1];
                     let rowi = &c[i * n..(i + 1) * n];
-                    let h = rowi[j1] - v[j1] - mn;
+                    let h = sub(sub(rowi[j1], v[j1])?, mn)?;
                     let (vv, yy) = (&v[..n], &y[..n]);
                     if low < up {
                         // Other rows wait at this distance: relax only.
@@ -852,7 +939,8 @@ impl<A: Acc> LapSolver<A> {
                             unsafe {
                                 let j = *collist.get_unchecked(k);
                                 assert_in_range(j, n);
-                                let v2 = *rowi.get_unchecked(j) - *vv.get_unchecked(j) - h;
+                                let v2 =
+                                    sub(sub(*rowi.get_unchecked(j), *vv.get_unchecked(j))?, h)?;
                                 if v2 < *d.get_unchecked(j) {
                                     *pred.get_unchecked_mut(j) = i;
                                     *d.get_unchecked_mut(j) = v2;
@@ -879,7 +967,7 @@ impl<A: Acc> LapSolver<A> {
                         unsafe {
                             let j = *collist.get_unchecked(k);
                             assert_in_range(j, n);
-                            let v2 = *rowi.get_unchecked(j) - *vv.get_unchecked(j) - h;
+                            let v2 = sub(sub(*rowi.get_unchecked(j), *vv.get_unchecked(j))?, h)?;
                             let mut dj = *d.get_unchecked(j);
                             if v2 < dj {
                                 *pred.get_unchecked_mut(j) = i;
@@ -913,7 +1001,7 @@ impl<A: Acc> LapSolver<A> {
                 }
             };
             for &j in &collist[..ready] {
-                v[j] = v[j] + (d[j] - mn);
+                v[j] = add(v[j], sub(d[j], mn)?)?;
             }
             let mut j = endofpath;
             loop {
@@ -926,13 +1014,14 @@ impl<A: Acc> LapSolver<A> {
             }
         }
         for i in 0..n {
-            u[i] = c[i * n + x[i]] - v[x[i]];
+            u[i] = sub(c[i * n + x[i]], v[x[i]])?;
         }
+        Ok(())
     }
 
     /// Dijkstra-like search for a shortest augmenting path from row `start`.
     /// Returns the sink column and the path length, or `None` if no finite path exists.
-    fn augmenting_path(&mut self, start: usize) -> Option<(usize, A)> {
+    fn augmenting_path(&mut self, start: usize) -> Result<Option<(usize, A)>, LapError> {
         let nc = self.nc;
         let mut i = start;
         let mut min_val = A::ZERO;
@@ -958,12 +1047,15 @@ impl<A: Acc> LapSolver<A> {
                 &mut self.path[..nc],
                 &self.row4col[..nc],
             );
+            let mut arithmetic = Arithmetic::default();
             for (it, &j) in self.remaining[..num_remaining].iter().enumerate() {
                 assert_in_range(j, nc);
                 // SAFETY: `remaining` holds column indices < nc, and every
                 // slice indexed here has length nc.
                 unsafe {
-                    let r = min_val + *row.get_unchecked(j) - ui - *v.get_unchecked(j);
+                    let r = arithmetic.add(min_val, *row.get_unchecked(j));
+                    let r = arithmetic.sub(r, ui);
+                    let r = arithmetic.sub(r, *v.get_unchecked(j));
                     let sj = shortest.get_unchecked_mut(j);
                     if r < *sj {
                         *path.get_unchecked_mut(j) = i;
@@ -976,22 +1068,26 @@ impl<A: Acc> LapSolver<A> {
                     }
                 }
             }
+            arithmetic.check()?;
             min_val = lowest;
             if index == NONE || min_val >= A::INF {
-                return None;
+                return Ok(None);
             }
             let j = self.remaining[index];
             self.sc[j] = true;
             num_remaining -= 1;
             self.remaining[index] = self.remaining[num_remaining];
             if self.row4col[j] == NONE {
-                return Some((j, min_val));
+                return Ok(Some((j, min_val)));
             }
             i = self.row4col[j];
         }
     }
 
-    fn solution<T: Cost<Acc = A>>(&self, m: &MatrixView<'_, T>) -> LapSolution<A> {
+    fn solution<T: Cost<Acc = A>>(
+        &self,
+        m: &MatrixView<'_, T>,
+    ) -> Result<LapSolution<A>, LapError> {
         let mut pairs: Vec<(usize, usize)> = self
             .col4row
             .iter()
@@ -1003,14 +1099,20 @@ impl<A: Acc> LapSolver<A> {
         }
         let mut cost = A::ZERO;
         for &(i, j) in &pairs {
-            cost = cost + m.get(i, j).widen();
+            cost = add(cost, m.get(i, j).widen())?;
         }
         let (row_ind, col_ind) = pairs.into_iter().unzip();
-        LapSolution {
+        if self.sense == Sense::Maximize {
+            // duals() exposes these with their original sign.
+            for &value in self.u.iter().chain(&self.v) {
+                value.checked_neg().ok_or(LapError::Overflow)?;
+            }
+        }
+        Ok(LapSolution {
             row_ind,
             col_ind,
             cost,
-        }
+        })
     }
 }
 
@@ -1360,3 +1462,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "lap_boundary_tests.rs"]
+mod boundary_tests;

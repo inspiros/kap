@@ -90,7 +90,7 @@ The Rust example prints the same cliques and costs, with the same free vertices.
 
 ## Notes and limits
 
-- `threshold=None` preserves unchanged behaviour. A fractional threshold promotes all-integer Python matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
+- `threshold=None` preserves unchanged behaviour. All-integer Python matrices require an integral threshold and keep exact int64 arithmetic. For a fractional threshold, explicitly convert the matrices to float64; otherwise the call raises `ValueError`. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - Select `Algo::Memetic` in Rust. `opts.n_trials` is ignored. Warm starts are not supported.
 - The deadline counts from entry. An in-progress batch or generation finishes after it. Rust still applies its default 100-generation limit unless changed.

@@ -133,8 +133,9 @@ def _promote_cost_matrices(cost_matrices, *, threshold=None):
         if matrix.dtype.kind not in "biuf":
             raise TypeError(f"unsupported cost matrix dtype {matrix.dtype}")
     dtype = np.int64 if all(m.dtype.kind in "biu" for m in cost_matrices) else np.float64
-    if threshold is not None and threshold != int(threshold):
-        dtype = np.float64
+    if dtype is np.int64 and threshold is not None and threshold != int(threshold):
+        raise ValueError("fractional threshold requires floating-point cost matrices; "
+                         "convert the matrices to float64 explicitly")
     if dtype is np.int64:
         for matrix in cost_matrices:
             if (matrix.dtype.kind == "u" and matrix.dtype.itemsize == 8
@@ -202,8 +203,9 @@ def ils(cost_matrices, *, max_iter=None, n_chains=1, time_limit=None, neighborho
     or -inf (maximise) forbids a pair. To forbid every pair above a limit, set
     those entries to inf before calling (use -inf for maximisation).
     Returned costs are in original units, not shifted. threshold=None leaves the
-    behaviour unchanged. A fractional threshold promotes all-integer matrices
-    to float64 for that call; integral thresholds keep exact int64 arithmetic.
+    behaviour unchanged. All-integer matrices require an integral threshold and
+    keep exact int64 arithmetic. For a fractional threshold, explicitly convert
+    the matrices to float64.
     Thresholds require the native core and must be finite real numbers, excluding
     bool. Integral thresholds must be exactly representable as float64.
 
@@ -247,8 +249,9 @@ def memetic(cost_matrices, *, generations=None, population=None, time_limit=None
     or -inf (maximise) forbids a pair. To forbid every pair above a limit, set
     those entries to inf before calling (use -inf for maximisation).
     Returned costs are in original units, not shifted. threshold=None leaves the
-    behaviour unchanged. A fractional threshold promotes all-integer matrices
-    to float64 for that call; integral thresholds keep exact int64 arithmetic.
+    behaviour unchanged. All-integer matrices require an integral threshold and
+    keep exact int64 arithmetic. For a fractional threshold, explicitly convert
+    the matrices to float64.
     Thresholds require the native core and must be finite real numbers, excluding
     bool. Integral thresholds must be exactly representable as float64.
 
@@ -301,8 +304,9 @@ def local_search(cost_matrices, *, neighborhood="1dv", start=None, initial=None,
     or -inf (maximise) forbids a pair. To forbid every pair above a limit, set
     those entries to inf before calling (use -inf for maximisation).
     Returned costs are in original units, not shifted. threshold=None leaves the
-    behaviour unchanged. A fractional threshold promotes all-integer matrices
-    to float64 for that call; integral thresholds keep exact int64 arithmetic.
+    behaviour unchanged. All-integer matrices require an integral threshold and
+    keep exact int64 arithmetic. For a fractional threshold, explicitly convert
+    the matrices to float64.
     Thresholds require the native core and must be finite real numbers, excluding
     bool. Integral thresholds must be exactly representable as float64.
 
@@ -351,8 +355,9 @@ def multiple_hungarian(cost_matrices, method="Cm", *, max_iter=100, n_trials=1,
     or -inf (maximise) forbids a pair. To forbid every pair above a limit, set
     those entries to inf before calling (use -inf for maximisation).
     Returned costs are in original units, not shifted. threshold=None leaves the
-    behaviour unchanged. A fractional threshold promotes all-integer matrices
-    to float64 for that call; integral thresholds keep exact int64 arithmetic.
+    behaviour unchanged. All-integer matrices require an integral threshold and
+    keep exact int64 arithmetic. For a fractional threshold, explicitly convert
+    the matrices to float64.
     Thresholds require the native core and must be finite real numbers, excluding
     bool. Integral thresholds must be exactly representable as float64.
 
@@ -416,8 +421,9 @@ def k_assignment(cost_matrices: Sequence[Array2DLike], algo: Optional[str] = Non
     or -inf (maximise) forbids a pair. To forbid every pair above a limit, set
     those entries to inf before calling (use -inf for maximisation).
     Returned costs are in original units, not shifted. threshold=None leaves the
-    behaviour unchanged. A fractional threshold promotes all-integer matrices
-    to float64 for that call; integral thresholds keep exact int64 arithmetic.
+    behaviour unchanged. All-integer matrices require an integral threshold and
+    keep exact int64 arithmetic. For a fractional threshold, explicitly convert
+    the matrices to float64.
     Thresholds require the native core and must be finite real numbers, excluding
     bool. Integral thresholds must be exactly representable as float64.
 

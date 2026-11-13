@@ -87,7 +87,7 @@ The Rust example prints the same cliques and costs, with the same free vertices.
 
 ## Notes and limits
 
-- `threshold=None` preserves unchanged behaviour. A fractional threshold promotes all-integer Python matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
+- `threshold=None` preserves unchanged behaviour. All-integer Python matrices require an integral threshold and keep exact int64 arithmetic. For a fractional threshold, explicitly convert the matrices to float64; otherwise the call raises `ValueError`. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - Am uses k−1 LAPs, and Shift uses k(k−1). Dm chooses the cheapest immediate merge. Bm explores merge trees and memoizes commuting merges.
 - Native Bm uses 6, 39, 310, and 3,000 LAPs for k=3, 4, 5, and 6. Cm, Em, and Fm invoke Bm for neighbors, so their cost grows further.

@@ -51,6 +51,7 @@ Rust returns `Result<LapSolution<T::Acc>, LapError>` with `row_ind`, `col_ind`, 
 |---|---|---|
 | `ValueError` | `LapError::BadShape` from MatrixView construction | Non-2-D Python input or Rust storage/strides outside the slice. |
 | `ValueError` | `LapError::InvalidCost(row, col)` | NaN, wrong-sign infinity, or a magnitude outside the solver's arithmetic headroom. |
+| `OverflowError` (native LAP) | `LapError::Overflow` | An integer intermediate value, dual, or total cost does not fit int64. |
 | `ValueError` | `LapError::Infeasible` | No assignment of min(rows, columns) pairs avoids forbidden entries. |
 | `TypeError` | Rejected by Cost at compilation | Unsupported matrix dtype. |
 | `ValueError` | - | The Python wrapper receives an unknown backend. |
@@ -85,6 +86,7 @@ The Rust example prints the same row indices, column indices, and total cost. It
 
 - Positive infinity forbids a pair for minimization; negative infinity does so for maximization. These rules describe the native LAP solver.
 - Square finite matrices use Jonker–Volgenant initialization and augmentation. Rectangular matrices or matrices with forbidden entries use shortest augmenting paths.
+- Integer LAP arithmetic is checked. If JV dual updates overflow, the solver restarts with shortest augmenting paths. If that path or the total cost also overflows, the call returns an error; integer costs are not converted to float64.
 - With tied costs, square inputs can choose a different optimum from SciPy. Rectangular inputs use SciPy's tie-breaking order.
 - Worst-case square LAP work is O(n³). Reuse Rust LapSolver when solving many matrices to retain its buffers.
 - Native Python supports float32/64 and signed integer types through int64 plus uint8/16/32. Booleans become uint8; uint64 fitting int64 becomes int64. Float16, longdouble, and larger uint64 values convert to float64, with possible loss of precision.

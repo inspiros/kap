@@ -36,7 +36,8 @@ def linear_sum_assignment(cost_matrix, maximize: bool = False):
     initialisation, so among several optimal assignments a different one than
     scipy's may be returned; rectangular ones break ties exactly like scipy. Entries equal to ``inf`` (``-inf`` when
     maximizing) are forbidden pairs. Integer matrices are solved exactly in
-    64-bit arithmetic.
+    64-bit arithmetic. Unrepresentable integer intermediates or total costs raise
+    OverflowError; JV dual overflow first retries shortest augmenting paths.
     """
     try:
         # Fast path: a 2-D ndarray of a natively supported dtype.

@@ -8,10 +8,10 @@ Use [linear assignment](lap.md) for a two-part problem.
 
 | Need | Function | When |
 |---|---|---|
-| Default heuristic search | `ils` / `Algo::Ils` | Use `time_limit` and several chains for quality; measured 1 s runs with eight chains reached the proven optimum on all 33 small benchmark instances. |
+| Default heuristic search | `ils` / `Algo::Ils` | Use `time_limit` and several chains; compare the [measured gaps](benchmarks.md#ils-and-the-lower-bound-against-the-proven-optimum) to the optimum. |
 | Original multiple Hungarian methods | `multiple_hungarian` / Am–Fm | Reproduce the paper's methods; Am, Dm, and Shift limit construction work, while Bm-based methods grow rapidly with k. |
 | Refine a complete solution | `local_search` / DV | Apply deterministic 1DV or sDV sweeps, with a constructed start or a supplied complete solution. |
-| Population search | `memetic` / `Algo::Memetic` | Compare mutation and crossover with ILS on your instances; measured multi-chain ILS costs were lower or equal at 60 s. |
+| Population search | `memetic` / `Algo::Memetic` | Compare with ILS on your instances; [optional matching](benchmarks.md#optional-matching-ils-and-memetic) changes their relative results. |
 | Choose a method by name | `k_assignment` | Retain a common Python dispatcher or select an explicit Rust `Algo`. |
 | Allow vertices to stay unmatched | `threshold=` / `Options::threshold` | Use [optional matching](optional-matching.md) with the native heuristics; forbidden infinities exclude individual pairs. |
 | Prove an optimum | `exact` (Python only) | Use small equal-size inputs, with about 10⁵ tuple variables as a practical limit. |

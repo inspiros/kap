@@ -173,7 +173,7 @@ def test_forbidden_initial(solve, maximize):
 
 @pytest.mark.parametrize("solve,options", CASES)
 @pytest.mark.parametrize("maximize", (False, True))
-def test_integer_promotion_and_none_compatibility(solve, options, maximize):
+def test_integer_threshold_and_none_compatibility(solve, options, maximize):
     matrices = instance((3, 2, 3), 512, np.int64)
     original = [matrix.copy() for matrix in matrices]
     common = dict(maximize=maximize, return_free=True, **options)
@@ -181,8 +181,9 @@ def test_integer_promotion_and_none_compatibility(solve, options, maximize):
     assert integral.matching_costs
     assert all(isinstance(cost, int) for cost in integral.matching_costs)
     assert solve(matrices, threshold=2.0, **common) == integral
-    fractional = solve(matrices, threshold=2.5, **common)
-    assert fractional == solve([m.astype(np.float64) for m in matrices], threshold=2.5, **common)
+    with pytest.raises(ValueError, match="fractional threshold.*float64"):
+        solve(matrices, threshold=2.5, **common)
+    fractional = solve([m.astype(np.float64) for m in matrices], threshold=2.5, **common)
     assert all(isinstance(cost, float) for cost in fractional.matching_costs)
     assert solve(matrices, threshold=None, **common) == solve(matrices, **common)
     for matrix, before in zip(matrices, original):
@@ -282,14 +283,27 @@ def test_exact_and_bound_have_no_threshold():
     assert "threshold" not in inspect.signature(kap.lower_bound).parameters
 
 
-def test_fractional_real_threshold_promotes_before_rounding():
+def test_fractional_real_threshold_rejected_before_rounding():
     from fractions import Fraction
 
     # The fractional part rounds away in float64, but the original threshold
-    # is fractional, so integer input still takes the floating-point path.
+    # is fractional, so integer input must still be rejected.
     tau = Fraction(1) + Fraction(1, 2**54)
     matrices = [np.zeros((1, 1), dtype=np.int64)]
-    result = kap.ils(matrices, threshold=tau)
+    with pytest.raises(ValueError, match="fractional threshold.*float64"):
+        kap.ils(matrices, threshold=tau)
+    result = kap.ils([m.astype(np.float64) for m in matrices], threshold=tau)
     assert result.matching_costs == [0.0]
     assert isinstance(result.matching_costs[0], float)
-    assert result == kap.ils([m.astype(np.float64) for m in matrices], threshold=tau)
+
+
+@pytest.mark.parametrize("dtype", (np.int64, np.uint64, np.bool_))
+def test_fractional_threshold_requires_explicit_float_input(dtype):
+    matrices = [np.ones((1, 1), dtype=dtype) for _ in range(3)]
+    with pytest.raises(ValueError, match="fractional threshold.*float64"):
+        kap.ils(matrices, threshold=1.5)
+    # A mixed input already selects floating-point arithmetic independently of tau.
+    matrices[0] = matrices[0].astype(np.float64)
+    result = kap.ils(matrices, threshold=1.5)
+    assert result.matching_costs == [3.0]
+    assert isinstance(result.matching_costs[0], float)

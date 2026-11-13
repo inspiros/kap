@@ -53,7 +53,7 @@ A float cost of `+inf` (minimise) / `-inf` (maximise) forbids a pair. To forbid 
 
 Returned costs are in original units, not shifted. Each reported clique cost is the sum of its original pair costs. Singletons are omitted from `matches` and appear in `free` when `return_free=True`.
 
-For all-integer Python matrices, a fractional threshold promotes the matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. This includes integral float thresholds such as `2.0`. Float64 promotion can round large integer costs. Thresholds pass to Rust as float64; Python rejects integral thresholds that cannot be represented exactly as float64. Rust integer matrices require an integral threshold representable in the accumulator type.
+All-integer Python matrices require an integral threshold, including integral float thresholds such as `2.0`, and keep exact int64 arithmetic. A fractional threshold raises `ValueError`; explicitly convert the matrices to float64 to use one. Float64 conversion can round large integer costs. Thresholds pass to Rust as float64; Python rejects integral thresholds that cannot be represented exactly as float64. Rust integer matrices require an integral threshold representable in the accumulator type.
 
 With a threshold, `initial` on `ils` or `local_search` may be partial or empty. Unlisted vertices become singletons. Index, uniqueness, and one-vertex-per-part checks still apply, and an initial clique containing a forbidden pair is rejected. Improvement of a supplied start refers to the shifted objective, up to rounding for float costs. Without a threshold, the initial solution must remain complete; see [warm starts](warm-start.md).
 
@@ -68,7 +68,7 @@ Python returns `AssignmentResult(matches, matching_costs, free)`. Rust returns `
 | Python | Rust | Condition |
 |---|---|---|
 | `TypeError` | Rejected by the `Option<f64>` type | Boolean or non-real Python threshold. |
-| `ValueError` | `KapError::BadOption("threshold")` | Non-finite threshold, or an unrepresentable threshold for integer arithmetic. |
+| `ValueError` | `KapError::BadOption("threshold")` | Non-finite threshold, a fractional threshold with all-integer matrices, or an unrepresentable threshold for integer arithmetic. |
 | `ValueError` | `KapError::Lap` | NaN entry or wrong-sign infinity. |
 | `ValueError` | `KapError::ForbiddenInitial` | `initial` places a forbidden pair in one clique. |
 | `ValueError` | `KapError::Unsupported("cost overflow")` | Checked cost arithmetic overflows. |

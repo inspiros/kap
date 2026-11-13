@@ -85,7 +85,7 @@ The Rust example prints the same cliques and costs, with the same free vertices.
 
 ## Notes and limits
 
-- `threshold=None` preserves unchanged behaviour. A fractional threshold promotes all-integer Python matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
+- `threshold=None` preserves unchanged behaviour. All-integer Python matrices require an integral threshold and keep exact int64 arithmetic. For a fractional threshold, explicitly convert the matrices to float64; otherwise the call raises `ValueError`. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - 1DV reassigns one part against its complement. Each sweep uses k LAPs, or one for k=2.
 - sDV visits one member of each subset/complement pair: 2^(k−1)−1 subsets per full sweep. It supports at most 16 parts.

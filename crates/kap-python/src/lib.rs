@@ -3,7 +3,7 @@ use std::{cell::RefCell, time::Duration};
 use kap::{Algo, Cost, Dv, KSolution, LapError, LapSolver, MatrixView, Options, Sense};
 use numpy::ndarray::ArrayView2;
 use numpy::{Element, PyArray1, PyReadonlyArray2};
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
 /// Matrices with fewer entries are solved without releasing the GIL.
@@ -36,6 +36,7 @@ fn lap_error(e: LapError) -> PyErr {
         LapError::InvalidCost(..) => {
             PyValueError::new_err("matrix contains invalid numeric entries")
         }
+        LapError::Overflow => PyOverflowError::new_err("integer overflow in LAP arithmetic"),
         LapError::Infeasible => PyValueError::new_err("cost matrix is infeasible"),
         LapError::BadShape => PyValueError::new_err("cost matrix has an invalid shape"),
     }

@@ -93,7 +93,7 @@ The Rust example prints the same cliques and costs, with the same free vertices.
 
 ## Notes and limits
 
-- `threshold=None` preserves unchanged behaviour. A fractional threshold promotes all-integer Python matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
+- `threshold=None` preserves unchanged behaviour. All-integer Python matrices require an integral threshold and keep exact int64 arithmetic. For a fractional threshold, explicitly convert the matrices to float64; otherwise the call raises `ValueError`. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - Python accepts Am–Fm, Shift, 1DV, sDV, ILS, and memetic, case-insensitively. `initial` is available through `ils` and `local_search`, not this dispatcher.
 - Python defaults to 100 iterations, or an effectively unlimited count for timed ILS/memetic. Explicit iteration and time limits both apply; Rust always retains the supplied `max_iter`.

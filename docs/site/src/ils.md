@@ -90,7 +90,7 @@ The Rust example prints the same cliques and costs, with the same free vertices.
 
 ## Notes and limits
 
-- `threshold=None` preserves unchanged behaviour. A fractional threshold promotes all-integer Python matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
+- `threshold=None` preserves unchanged behaviour. All-integer Python matrices require an integral threshold and keep exact int64 arithmetic. For a fractional threshold, explicitly convert the matrices to float64; otherwise the call raises `ValueError`. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - Select `Algo::Ils` in Rust. The initial Am solution, or a supplied start, passes through DV before the chains begin.
 - The deadline starts after the full start solution has been computed. It is checked before each perturbation; an ongoing DV descent can finish after it.

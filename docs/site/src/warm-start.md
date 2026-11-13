@@ -107,7 +107,7 @@ The Rust example prints the same cliques and costs, with the same free vertices.
 
 ## Notes and limits
 
-- `threshold=None` preserves unchanged behaviour. A fractional threshold promotes all-integer Python matrices to float64 for that call; integral thresholds keep exact int64 arithmetic. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
+- `threshold=None` preserves unchanged behaviour. All-integer Python matrices require an integral threshold and keep exact int64 arithmetic. For a fractional threshold, explicitly convert the matrices to float64; otherwise the call raises `ValueError`. See [optional matching](optional-matching.md) for the shifted objective, forbidden pairs, and validation.
 
 - Without a threshold, a complete solution has exactly N=max(part sizes) nodes after singleton restoration. It need not contain a vertex from every part in each node.
 - Python accepts an `AssignmentResult` or an iterable of cliques. Only the result's `matches` field is used; costs are recomputed from the supplied matrices.
