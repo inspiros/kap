@@ -7,7 +7,7 @@ The Python package requires Python 3.10 or newer and NumPy. The wheel workflow b
 | System | Architecture |
 |---|---|
 | Linux | x86-64, AArch64 |
-| macOS | x86-64, Apple Silicon (AArch64) |
+| macOS | x86-64 and Apple Silicon (AArch64), as one universal2 wheel |
 | Windows | x86-64 |
 
 The workflow tests Python 3.10 and 3.14. Each abi3 wheel serves compatible CPython versions from 3.10 onward; it does not require a separate wheel for every Python minor version.
