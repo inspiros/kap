@@ -55,8 +55,7 @@ sDV as `algo` choices, and `refine`, require `backend="kap"` (the native core).
 References: H.-J. Bandelt, A. Maas and F. C. R. Spieksma, “Local search for
 multidimensional assignment problems with decomposable costs,” *European
 Journal of Operational Research* 158, 2004; Karapetyan and Gutin,
-“Efficient local search algorithms for known and new neighborhoods for the
-multidimensional assignment problem,” *Journal of Heuristics* 17, 2011.
+“Local search heuristics for the multidimensional assignment problem,” *Journal of Heuristics* 17, 2011.
 
 ## Iterated local search (ILS)
 
@@ -87,9 +86,7 @@ budgets are reproducible; a time limit makes results depend on machine speed.
 
 In the [benchmarks](benchmarks.md#solution-quality-of-the-search-methods), ILS with several chains gave the lowest costs of the methods tested.
 
-This is the “Chain” method of Karapetyan and Gutin, “Efficient local search
-algorithms for known and new neighborhoods for the multidimensional assignment
-problem,” *Journal of Heuristics* 17, 2011.
+This is the “Chain” method of Karapetyan and Gutin, “Local search heuristics for the multidimensional assignment problem,” *Journal of Heuristics* 17, 2011.
 
 ## Memetic algorithm
 
@@ -145,8 +142,11 @@ this. Beyond about k = 6, use Am or Dm.
   kap 0.2.3's behavior: Cm updates the current solution during a pass, and Fm
   accepts only equal-or-better moves.
 
-## Reference
+## References
 
-B. Gabrovšek, T. Novak, J. Povh, D. Rupnik Poklukar, J. Žerovnik,
-"Multiple Hungarian Method for k-Assignment Problem", *Mathematics* 8(11),
-2050, 2020. doi:10.3390/math8112050
+- B. Gabrovšek, T. Novak, J. Povh, D. Rupnik Poklukar, and J. Žerovnik, “Multiple Hungarian Method for k-Assignment Problem,” *Mathematics* 8(11), 2050, 2020. [doi:10.3390/math8112050](https://doi.org/10.3390/math8112050). Methods Am–Fm.
+- H.-J. Bandelt, A. Maas, and F. C. R. Spieksma, “Local search for multidimensional assignment problems with decomposable costs,” *European Journal of Operational Research* 158, 2004. Dimensionwise variation.
+- D. Karapetyan and G. Gutin, “Local search heuristics for the multidimensional assignment problem,” *Journal of Heuristics* 17(3), 201–249, 2011. [arXiv:0806.3258](https://arxiv.org/abs/0806.3258). 1DV, sDV, and the Chain method used by ILS.
+- D. Karapetyan, G. Gutin, and B. Goldengorin, “Empirical evaluation of construction heuristics for the multidimensional assignment problem,” *Text in Algorithmics* 11, 107–122, 2009. [arXiv:0906.2960](https://arxiv.org/abs/0906.2960). Shift-ROM.
+- G. Gutin and D. Karapetyan, “A memetic algorithm for the multidimensional assignment problem.” Memetic search.
+- D. Karapetyan and G. Gutin, “A New Approach to Population Sizing for Memetic Algorithms: A Case Study for the Multidimensional Assignment Problem,” *Evolutionary Computation* 19(3), 345–371, 2011. [arXiv:1003.4314](https://arxiv.org/abs/1003.4314). Memetic population sizing.

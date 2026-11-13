@@ -46,3 +46,9 @@ The Rust example prints the same cliques and costs in the same format.
 
 Use a [warm start](warm-start.md) to supply a complete assignment to ILS or local search.
 For implementation details and the original algorithms, see the [algorithms reference](algorithms.md).
+
+## Reference
+
+B. Gabrovšek, T. Novak, J. Povh, D. Rupnik Poklukar, and J. Žerovnik, “Multiple Hungarian Method for k-Assignment Problem,” *Mathematics* 8(11), 2050, 2020. [doi:10.3390/math8112050](https://doi.org/10.3390/math8112050).
+
+The papers behind the other methods are listed in the [algorithms reference](algorithms.md#references).
